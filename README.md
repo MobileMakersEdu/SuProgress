@@ -11,6 +11,30 @@ developer.
 
 SuProgress was mostly authored by [Max Howell][mxcl], a splendid chap.
 
+Usage
+-----
+SuProgress is super easy to use:
+
+```objc
+[viewController SuProgressURLConnectionsCreatedInBlock:^{
+	[NSURLConnection connectionWithRequest:request delegate:self];
+}];
+```
+
+Any NSURLConnections created in that block have their progress proxied to the
+SuProgressBarView, which we also create and maintain for you.
+
+Of course this means **any** frameworks or methods you call that operate via
+NSURLConnection will have their progress proxied. For example, the Facebook SDK:
+
+```objc
+[viewController SuProgressURLConnectionsCreatedInBlock:^{
+	[FBRequestConnection startWithGraphPath:@"/me" completionHandler:foo];
+}];
+```
+
+Neat, right?
+
 Requirements
 ------------
 * ARC
