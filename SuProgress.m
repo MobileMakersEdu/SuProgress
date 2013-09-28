@@ -2,6 +2,7 @@
 //  BSD licensed. See the README.
 
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #define SuProgressBarTag 51381
 #define SuProgressBarHeight 2
 
@@ -16,7 +17,9 @@
 @property (nonatomic) float progress;
 @end
 
-
+@interface NSURLConnection (SuProgress)
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate;
+@end
 
 @interface SuProgress : NSObject  // probably NSProgress right?
 @property (nonatomic, weak) id<SuProgressDelegate> delegate;
@@ -25,12 +28,29 @@
 @property (nonatomic) BOOL finished;
 @end
 
-@interface SuProgressNSURLConnection : SuProgress <NSURLConnectionDelegate>
+// this class acts as an NSURLConnectionDelegate proxy
+@interface SuProgressNSURLConnection : SuProgress <NSURLConnectionDelegate, NSURLConnectionDataDelegate>
+// strong because NSURLConnection treats its delegates as strong
+@property (strong, nonatomic) id<NSURLConnectionDelegate, NSURLConnectionDataDelegate> endDelegate;
 @end
+
+static UIViewController *SuProgressViewController;  // yikes, meh, whatever
 
 
 
 @implementation UIViewController (SuProgress)
+
+- (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block {
+    Class class = [NSURLConnection class];
+    Method original = class_getInstanceMethod(class, @selector(initWithRequest:delegate:));
+    Method swizzle = class_getInstanceMethod(class, @selector(SuProgress_initWithRequest:delegate:));
+
+    SuProgressViewController = self;
+    
+    method_exchangeImplementations(original, swizzle);
+    block();
+    method_exchangeImplementations(swizzle, original);  // put it back
+}
 
 - (SuProgressBarView *)SuProgressBar {
     if (self.navigationController && self.navigationController.navigationBar) {
@@ -49,13 +69,6 @@
         NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
         return nil;
     }
-}
-
-- (NSURLConnection *)SuProgressForRequest:(NSURLRequest *)request {
-    SuProgress *ogre = [SuProgressNSURLConnection new];
-    ogre.delegate = [self SuProgressBar];
-    [[self SuProgressBar].ogres addObject:ogre];
-    return [NSURLConnection connectionWithRequest:request delegate:ogre];
 }
 
 @end
@@ -195,6 +208,9 @@
     }
     self.started = YES;
     [self.delegate started:self];
+    
+    if ([_endDelegate respondsToSelector:@selector(connection:didReceiveResponse:)])
+        [_endDelegate connection:connection didReceiveResponse:rsp];
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
@@ -206,18 +222,46 @@
             : 0.01;
     [self.delegate ogre:self progressed:f];
     self.progress += f;
+
+    if ([_endDelegate respondsToSelector:@selector(connection:didReceiveData:)])
+        [_endDelegate connection:connection didReceiveData:data];
 }
 
+#define SuProgressFinishedMacro \
+    self.progress = 1; \
+    self.finished = YES; \
+    [self.delegate finished:self]
+
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-    //TODO error
-    NSLog(@"Unhandled error");
+    SuProgressFinishedMacro;
+    if ([_endDelegate respondsToSelector:@selector(connection:didFailWithError:)])
+        [_endDelegate connection:connection didFailWithError:error];
 }
 
 - (void)connectionDidFinishLoading:(id)connection {
-    self.progress = 1;
-    self.finished = YES;
-    [self.delegate finished:self];
+    SuProgressFinishedMacro;
+    if ([_endDelegate respondsToSelector:@selector(connectionDidFinishLoading:)])
+        [_endDelegate connectionDidFinishLoading:connection];
 }
 
 @end
 
+
+
+
+@implementation NSURLConnection (Debug)
+
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate
+{
+    // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
+    // progress to our progress bar as its intermediary step.
+    SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new];
+    ogre.delegate = [SuProgressViewController SuProgressBar];
+    ogre.endDelegate = delegate;
+    [[SuProgressViewController SuProgressBar].ogres addObject:ogre];
+
+    // looks weird? Google: objectivec swizzling
+    return [self SuProgress_initWithRequest:request delegate:ogre];
+}
+
+@end

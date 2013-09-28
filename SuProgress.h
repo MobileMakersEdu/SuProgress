@@ -6,11 +6,15 @@
 
 @interface UIViewController (SuProgress)
 
-// TODO add delegate paramater
-// NOTE it sucks that we can't just accept a urlConnection here. But
-// they don't allow us to change the delegate after creation. Probably
-// though we can do some obj-c magic to proxy the delegate via us, so TODO that
-- (NSURLConnection *)SuProgressForRequest:(NSURLRequest *)request;
+/** Welcome to our magic function. Any NSURLConnections
+  * created in this block will all delegate messages
+  * proxied via the ViewController's SuProgressBar so that
+  * progress is automatically provided. Wonderful. */
+/** NOTE currently this does not compare the thread ID, so
+  * connections from multiple threads will proxy and we
+  * are not trying to be thread safe so it may go all weird
+  * on your ass. */
+- (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block;
 
 - (UIView *)SuProgressBar;
 
