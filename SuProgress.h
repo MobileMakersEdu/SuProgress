@@ -4,15 +4,14 @@
 #import <UIKit/UIKit.h>
 
 
-@interface SuProgress : NSObject
-@end
+@interface UIViewController (SuProgress)
 
+// TODO add delegate paramater
+// NOTE it sucks that we can't just accept a urlConnection here. But
+// they don't allow us to change the delegate after creation. Probably
+// though we can do some obj-c magic to proxy the delegate via us, so TODO that
+- (NSURLConnection *)SuProgressForRequest:(NSURLRequest *)request;
 
-@interface UINavigationBar (SuProgress)
-
-// Totally sucks to have to do it this way rather than just pull in an
-// NSURLConnection. Also, since we don't want to hog the delegate, we'll have to
-// proxy it anyway with swizzling, so overall, we'll maybe be able to do better
-- (SuProgress *)followURLConnectionWithRequest:(NSURLConnection *)urlConnection;
+- (UIView *)SuProgressBar;
 
 @end

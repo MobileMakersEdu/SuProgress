@@ -1,54 +1,62 @@
 @import UIKit;
 #import "SuProgress.h"
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate>
+@interface AppDelegate : UIResponder <UIApplicationDelegate> {
+    UIViewController *viewController;
+}
 @property (strong, nonatomic) UIWindow *window;
 @end
 
-#define UIColorPurple [UIColor colorWithRed:0.35f green:0.35f blue:0.81f alpha:1.0f]
 
 
-@implementation AppDelegate {
-    UINavigationController *navigationController;
-    UIButton *button;
+@implementation AppDelegate
+
+- (void)fly {
+    id urls = @[
+        @"http://methylblue.com/images/as_big.png",
+        @"https://www.google.com/#q=foo",
+        @"http://methylblue.com/images/Favstand.jpg",
+        @"http://methylblue.com/images/zombieland_005.jpeg"
+    ];
+    for (id url in urls) {
+        id request = [NSURLRequest requestWithURL:[NSURL URLWithString:url]];
+
+        // this is how you do it, we can do multiple requests and
+        // SuProgress will adjust progress bar accordingly and prettily
+        [viewController SuProgressForRequest:request];
+    }
 }
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
-{
-    [self setup];
-    [button addTarget:self action:@selector(fly) forControlEvents:UIControlEventTouchUpInside];
 
+
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    UIButton *button = [self setup];
+    [button addTarget:self action:@selector(fly) forControlEvents:UIControlEventTouchUpInside];
     return YES;
 }
 
-- (void)fly {
-//    id url = @"http://methylblue.com/images/zombieland_005.jpeg";
-    id url = @"http://methylblue.com/images/as_big.png";
-    id request = [NSURLRequest requestWithURL:[NSURL URLWithString:url]];
-    [navigationController.navigationBar followURLConnectionWithRequest:request];
-}
+- (UIButton *)setup {
+    viewController = [UIViewController new];
+    viewController.title = @"MMDietProgress Example";
 
+    UINavigationController *navigationController = [UINavigationController new];
+    [navigationController pushViewController:viewController animated:NO];
 
-
-
-- (void)setup {
-    UIViewController *vc = [UIViewController new];
-    vc.title = @"MMDietProgress Example";
-    navigationController = [UINavigationController new];
-    [navigationController pushViewController:vc animated:NO];
-
-    button = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     [button setTitle:@"Go" forState:UIControlStateNormal];
     [button sizeToFit];
     button.frame = CGRectInset(button.frame, -10, -5);
     button.titleLabel.font = [UIFont boldSystemFontOfSize:20];
     button.center = (CGPoint){160, 160};
-    [vc.view addSubview:button];
+    [viewController.view addSubview:button];
 
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
     self.window.backgroundColor = [UIColor whiteColor];
     self.window.rootViewController = navigationController;
     [self.window makeKeyAndVisible];
+
+    return button;
 }
 
 @end
