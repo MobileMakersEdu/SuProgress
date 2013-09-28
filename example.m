@@ -72,7 +72,7 @@
     [NSURLCache setSharedURLCache:[[NSURLCache alloc] initWithMemoryCapacity:0 diskCapacity:0 diskPath:@"."]];
     
     viewController = [UIViewController new];
-    viewController.title = @"MMDietProgress Example";
+    viewController.title = @"SuProgress Example";
 
     UINavigationController *navigationController = [UINavigationController new];
     [navigationController pushViewController:viewController animated:NO];
