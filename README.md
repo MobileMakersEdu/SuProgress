@@ -5,6 +5,8 @@ the UINavigationBar for your app.
 Crucially SuProgress is a drop-in library for common progress types eg.
 NSURLConnection, UIWebView, AFNetworking, and NSProgress.
 
+![gif](http://methylblue.com/images/SuProgressExample.gif)
+
 SuProgress was made by [Mobile Makers][mm], Chicago, an eight week intense
 learning experience that will take you from beginner to professional iOS
 developer.
