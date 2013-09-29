@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 
 
+
 @interface UIViewController (SuProgress)
 
 /** Welcome to our magic function. Any NSURLConnections
@@ -15,6 +16,13 @@
   * are not trying to be thread safe so it may go all weird
   * on your ass. */
 - (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block;
+
+
+/** The UIWebView does not need to be in the viewController's
+  * view or anything.
+  */
+- (void)SuProgressForWebView:(UIWebView *)webView;
+
 
 - (UIView *)SuProgressBar;
 

@@ -37,8 +37,12 @@
     }];
 }
 
-- (void)demoUIWebView {
-    
+- (void)demoWebView {
+    [webViewController SuProgressForWebView:webView];
+
+    id url = [NSURL URLWithString:@"http://methylblue.com"];
+    id rq = [NSURLRequest requestWithURL:url];
+    [webView loadRequest:rq];
 }
 
 
@@ -98,6 +102,7 @@
     [button addTarget:self action:@selector(demoConnections) forControlEvents:UIControlEventTouchUpInside];
     
     textView = [[UITextView alloc] initWithFrame:CGRectMake(0, 120, 320, 320)];
+    textView.editable = NO;
     [connectionsViewController.view addSubview:textView];
     
     webViewController = [UIViewController new];
@@ -105,7 +110,7 @@
     webViewController.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"UIWebView" image:square selectedImage:square];
     [webViewController.view addSubview:webView = [[UIWebView alloc] initWithFrame:webViewController.view.bounds]];
     webView.autoresizingMask = UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth;
-    webViewController.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemPlay target:self action:@selector(demoUIWebView)];
+    webViewController.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemPlay target:self action:@selector(demoWebView)];
 
     UINavigationController *navigationController2 = [UINavigationController new];
     [navigationController2 pushViewController:webViewController animated:NO];
@@ -115,8 +120,6 @@
         navigationController1,
         navigationController2
     ];
-    
-
     
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
     self.window.backgroundColor = [UIColor whiteColor];

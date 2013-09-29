@@ -34,7 +34,18 @@
 @property (strong, nonatomic) id<NSURLConnectionDelegate, NSURLConnectionDataDelegate> endDelegate;
 @end
 
-static UIViewController *SuProgressViewController;  // yikes, meh, whatever
+@interface SuProgressUIWebView : SuProgress <UIWebViewDelegate>
+@property (strong, nonatomic) UIWebView *webView;
+@end
+
+
+
+// Used inside SuProgressURLConnectionsCreatedInBlock
+// making us not-thread safe, but otherwise fine
+// yes globals are horrible, but in this case there
+// wasn't another solution I could think of that
+// wasn't also ugly AND way more code.
+static UIViewController *SuProgressViewController;
 
 
 
@@ -71,6 +82,14 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
     }
 }
 
+- (void)SuProgressForWebView:(UIWebView *)webView {
+    SuProgressUIWebView *ogre = [SuProgressUIWebView new];
+    ogre.delegate = [self SuProgressBar];
+    ogre.webView = webView;  // have to unset delegate because it isn't weak :P
+    [[self SuProgressBar].ogres addObject:ogre];
+    webView.delegate = ogre;
+}
+
 @end
 
 
@@ -95,16 +114,16 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
         progressPortion = 0.9;
         _ogres = [NSMutableArray new];
         self.progress = 0.05;
+        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
     }
     return self;
 }
 
 - (void)started:(SuProgress *)ogre {
-    if (_progress == 0.05) {
+    if (_progress == 0.05f) {
         // do an initial trickle, once
         self.progress = 0.1;
         progressPortion = 0.8;
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
     }
 }
 
@@ -116,7 +135,7 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
     for (id ogre in _ogres)
         remaining_progress += 1.f - [ogre progress];
 
-    // seems complicated, and it is, this way to calculate
+    // seems complicated, and… it is, this way to calculate
     // actual progress allows us to accept new jobs some
     // time after other jobs were already started
     // NOTE only works because this delegate method is called
@@ -160,9 +179,9 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
     if (!self.allOgresFinished)
         return;
 
-    NSTimeInterval finishFillDuration = 0.1;
-
-    [UIView animateWithDuration:finishFillDuration delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+    [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
+    
+    [UIView animateWithDuration:0.1 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         // if we are already filled, then CoreAnimation is smart and this
         // block will finish instantly
         self.frame = (CGRect){0, self.frame.origin.y, self.superview.bounds.size.width, SuProgressBarHeight};
@@ -185,6 +204,21 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
 
 
 @implementation SuProgress
+// FIXME bit dumb to allow setting started to false considering
+// this is an invalid state in fact. Same for finished. Needs enum.
+- (void)setStarted:(BOOL)started {
+    _started = started;
+    if (started) {
+        [_delegate started:self];
+    }
+}
+- (void)setFinished:(BOOL)finished {
+    _finished = finished;
+    if (finished) {
+        _progress = 1;
+        [_delegate finished:self];
+    }
+}
 @end
 
 
@@ -207,7 +241,6 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
         //TODO error!
     }
     self.started = YES;
-    [self.delegate started:self];
     
     if ([_endDelegate respondsToSelector:@selector(connection:didReceiveResponse:)])
         [_endDelegate connection:connection didReceiveResponse:rsp];
@@ -227,19 +260,14 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
         [_endDelegate connection:connection didReceiveData:data];
 }
 
-#define SuProgressFinishedMacro \
-    self.progress = 1; \
-    self.finished = YES; \
-    [self.delegate finished:self]
-
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-    SuProgressFinishedMacro;
+    self.finished = YES;
     if ([_endDelegate respondsToSelector:@selector(connection:didFailWithError:)])
         [_endDelegate connection:connection didFailWithError:error];
 }
 
 - (void)connectionDidFinishLoading:(id)connection {
-    SuProgressFinishedMacro;
+    self.finished = YES;
     if ([_endDelegate respondsToSelector:@selector(connectionDidFinishLoading:)])
         [_endDelegate connectionDidFinishLoading:connection];
 }
@@ -262,6 +290,115 @@ static UIViewController *SuProgressViewController;  // yikes, meh, whatever
 
     // looks weird? Google: objectivec swizzling
     return [self SuProgress_initWithRequest:request delegate:ogre];
+}
+
+@end
+
+
+
+
+// Inspired by: https://github.com/ninjinkun/NJKWebViewProgress
+
+NSString *completeRPCURL = @"webviewprogressproxy:///complete";
+
+@implementation SuProgressUIWebView {
+    NSUInteger _loadingCount;
+    NSUInteger _maxLoadCount;
+    NSURL *_currentURL;
+    BOOL _interactive;
+}
+
+- (void)setFinished:(BOOL)finished {
+    if (finished) {
+        _webView.delegate = nil;
+    }
+    [super setFinished:finished];
+}
+
+- (void)incrementProgress {
+    float progress = self.progress;
+    float maxProgress = _interactive ? 1.f : 0.5f;
+    float remainPercent = (float)_loadingCount / (float)_maxLoadCount;
+    float increment = (maxProgress - progress) * remainPercent;
+
+    [self.delegate ogre:self progressed:increment];
+    self.progress += increment;
+}
+
+- (void)reset {
+    _maxLoadCount = _loadingCount = 0;
+    _interactive = NO;
+    self.progress = 0.0;
+}
+
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
+    if ([request.URL.absoluteString isEqualToString:completeRPCURL]) {
+        self.finished = YES;
+        return NO;
+    }
+    
+    BOOL isFragmentJump = NO;
+    if (request.URL.fragment) {
+        NSString *nonFragmentURL = [request.URL.absoluteString stringByReplacingOccurrencesOfString:[@"#" stringByAppendingString:request.URL.fragment] withString:@""];
+        isFragmentJump = [nonFragmentURL isEqualToString:webView.request.URL.absoluteString];
+    }
+    
+    BOOL isTopLevelNavigation = [request.mainDocumentURL isEqual:request.URL];
+    
+    BOOL isHTTP = [request.URL.scheme isEqualToString:@"http"] || [request.URL.scheme isEqualToString:@"https"];
+    if (!isFragmentJump && isHTTP && isTopLevelNavigation) {
+        _currentURL = request.URL;
+        [self reset];
+    }
+    return YES;
+}
+
+- (void)webViewDidStartLoad:(UIWebView *)webView {
+    _loadingCount++;
+    _maxLoadCount = fmax(_maxLoadCount, _loadingCount);
+    
+    self.started = YES;
+    [self.delegate started:self];
+}
+
+- (void)webViewDidFinishLoad:(UIWebView *)webView {
+    _loadingCount--;
+    [self incrementProgress];
+    
+    NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
+    
+    BOOL interactive = [readyState isEqualToString:@"interactive"];
+    if (interactive) {
+        _interactive = YES;
+        NSString *waitForCompleteJS = [NSString stringWithFormat:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '%@'; document.body.appendChild(iframe);  }, false);", completeRPCURL];
+        [webView stringByEvaluatingJavaScriptFromString:waitForCompleteJS];
+    }
+    
+    BOOL isNotRedirect = _currentURL && [_currentURL isEqual:webView.request.mainDocumentURL];
+    BOOL complete = [readyState isEqualToString:@"complete"];
+    if (complete && isNotRedirect) {
+        self.finished = YES;
+    }
+}
+
+- (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
+    _loadingCount--;
+    [self incrementProgress];
+    
+    NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
+    
+    BOOL interactive = [readyState isEqualToString:@"interactive"];
+    if (interactive) {
+        _interactive = YES;
+        NSString *waitForCompleteJS = [NSString stringWithFormat:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '%@'; document.body.appendChild(iframe);  }, false);", completeRPCURL];
+        [webView stringByEvaluatingJavaScriptFromString:waitForCompleteJS];
+    }
+    
+    BOOL isNotRedirect = _currentURL && [_currentURL isEqual:webView.request.mainDocumentURL];
+    BOOL complete = [readyState isEqualToString:@"complete"];
+    if (complete && isNotRedirect) {
+        self.finished = YES;
+    }
 }
 
 @end

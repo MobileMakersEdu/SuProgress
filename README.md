@@ -37,6 +37,12 @@ NSURLConnection will have their progress proxied. For example, the Facebook SDK:
 
 Neat, right?
 
+Here’s how to display progress for a UIWebView:
+
+```objc
+[viewController SuProgressForWebView:webView]
+```
+
 Requirements
 ------------
 * ARC
