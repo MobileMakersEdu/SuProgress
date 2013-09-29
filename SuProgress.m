@@ -299,7 +299,7 @@ static UIViewController *SuProgressViewController;
 
 // Inspired by: https://github.com/ninjinkun/NJKWebViewProgress
 
-NSString *completeRPCURL = @"webviewprogressproxy:///complete";
+#define SuProgressUIWebViewCompleteRPCURL "webviewprogressproxy:///complete"
 
 @implementation SuProgressUIWebView {
     NSUInteger _loadingCount;
@@ -332,7 +332,7 @@ NSString *completeRPCURL = @"webviewprogressproxy:///complete";
 }
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
-    if ([request.URL.absoluteString isEqualToString:completeRPCURL]) {
+    if ([request.URL.absoluteString isEqualToString:@SuProgressUIWebViewCompleteRPCURL]) {
         self.finished = YES;
         return NO;
     }
@@ -348,7 +348,6 @@ NSString *completeRPCURL = @"webviewprogressproxy:///complete";
     BOOL isHTTP = [request.URL.scheme isEqualToString:@"http"] || [request.URL.scheme isEqualToString:@"https"];
     if (!isFragmentJump && isHTTP && isTopLevelNavigation) {
         _currentURL = request.URL;
-        [self reset];
     }
     return YES;
 }
@@ -370,11 +369,13 @@ NSString *completeRPCURL = @"webviewprogressproxy:///complete";
     BOOL interactive = [readyState isEqualToString:@"interactive"];
     if (interactive) {
         _interactive = YES;
-        NSString *waitForCompleteJS = [NSString stringWithFormat:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '%@'; document.body.appendChild(iframe);  }, false);", completeRPCURL];
-        [webView stringByEvaluatingJavaScriptFromString:waitForCompleteJS];
+        // this callsback on webView:shouldStartLoadWithRequest:navigationType
+        // when it has finished executing, indicating to us that loading has
+        // completed (sorta, images usually still flicker in)
+        [webView stringByEvaluatingJavaScriptFromString:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '" SuProgressUIWebViewCompleteRPCURL "'; document.body.appendChild(iframe);  }, false);"];
     }
     
-    BOOL isNotRedirect = _currentURL && [_currentURL isEqual:webView.request.mainDocumentURL];
+    BOOL isNotRedirect = [_currentURL isEqual:webView.request.mainDocumentURL];
     BOOL complete = [readyState isEqualToString:@"complete"];
     if (complete && isNotRedirect) {
         self.finished = YES;
@@ -382,23 +383,7 @@ NSString *completeRPCURL = @"webviewprogressproxy:///complete";
 }
 
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
-    _loadingCount--;
-    [self incrementProgress];
-    
-    NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
-    
-    BOOL interactive = [readyState isEqualToString:@"interactive"];
-    if (interactive) {
-        _interactive = YES;
-        NSString *waitForCompleteJS = [NSString stringWithFormat:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '%@'; document.body.appendChild(iframe);  }, false);", completeRPCURL];
-        [webView stringByEvaluatingJavaScriptFromString:waitForCompleteJS];
-    }
-    
-    BOOL isNotRedirect = _currentURL && [_currentURL isEqual:webView.request.mainDocumentURL];
-    BOOL complete = [readyState isEqualToString:@"complete"];
-    if (complete && isNotRedirect) {
-        self.finished = YES;
-    }
+    [self webViewDidFinishLoad:webView];
 }
 
 @end
