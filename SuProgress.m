@@ -12,21 +12,46 @@
 - (void)finished:(id)ogre;
 @end
 
-@interface SuProgressBarView : UIView <SuProgressDelegate>
-@property (nonatomic, strong) NSMutableArray *ogres;
-@property (nonatomic) float progress;
+@protocol KingOfDelegates
+- (void)progressed:(float)progress;
 @end
 
 @interface NSURLConnection (SuProgress)
 - (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate;
 @end
 
-@interface SuProgress : NSObject  // probably NSProgress right?
+@interface SuProgress : NSObject
 @property (nonatomic, weak) id<SuProgressDelegate> delegate;
 @property (nonatomic) float progress;
 @property (nonatomic) BOOL started;
 @property (nonatomic) BOOL finished;
+- (void)reset;
 @end
+
+@interface TheKingOfOgres : NSObject <SuProgressDelegate>
++ (id)kingWithDelegate:(id<KingOfDelegates>)delegate;
+- (void)addOgre:(SuProgress *)ogre singleUse:(BOOL)singleUse;
+@property (nonatomic, readonly) NSMutableArray *ogres;
+@property (nonatomic, weak, readonly) id<KingOfDelegates> delegate;
+@property (nonatomic, readonly) float progress;
+@end
+
+@interface SuProgressBarView : UIView <KingOfDelegates>
+@property (nonatomic, readonly) float progress;
+@property (nonatomic, strong, readonly) TheKingOfOgres *king;
+@end
+
+
+
+//TODO make each bar a sublayer (or subview for easier animation control)
+//     because if new progress occurs during fadeout it should let old bar
+//     fadeout still, and new bar should start over the top, also reduces
+//     state machine significantly
+//TODO currently we are in the navigationbar and this means we will stay
+//     there when the view transitions. Need to work around that.
+
+
+
 
 // this class acts as an NSURLConnectionDelegate proxy
 @interface SuProgressNSURLConnection : SuProgress <NSURLConnectionDelegate, NSURLConnectionDataDelegate>
@@ -35,7 +60,6 @@
 @end
 
 @interface SuProgressUIWebView : SuProgress <UIWebViewDelegate>
-@property (strong, nonatomic) UIWebView *webView;
 @end
 
 
@@ -45,7 +69,7 @@
 // yes globals are horrible, but in this case there
 // wasn't another solution I could think of that
 // wasn't also ugly AND way more code.
-static UIViewController *SuProgressViewController;
+static TheKingOfOgres *SuProgressKing;
 
 
 
@@ -56,37 +80,53 @@ static UIViewController *SuProgressViewController;
     Method original = class_getInstanceMethod(class, @selector(initWithRequest:delegate:));
     Method swizzle = class_getInstanceMethod(class, @selector(SuProgress_initWithRequest:delegate:));
 
-    SuProgressViewController = self;
-    
     method_exchangeImplementations(original, swizzle);
+    SuProgressKing = [self SuProgressBar].king;
     block();
+    SuProgressKing = nil;
     method_exchangeImplementations(swizzle, original);  // put it back
 }
 
+static void SuProgressFixTintColor(UIView *bar) {
+    CGFloat white, alpha;
+    [bar.tintColor getWhite:&white alpha:&alpha];
+    if (alpha == 0) {
+        NSLog(@"Will not set a completely transparent tintColor, using window.tintColor");
+        bar.tintColor = bar.window.tintColor;
+        CGFloat white, alpha;
+        [bar.tintColor getWhite:&white alpha:&alpha];
+        if (alpha == 0) {
+            NSLog(@"Will not set a completely transparent tintColor, using blueColor");
+            bar.tintColor = [UIColor blueColor];
+        }
+    }
+}
+
 - (SuProgressBarView *)SuProgressBar {
+    UIView *bar = nil;
     if (self.navigationController && self.navigationController.navigationBar) {
         UINavigationBar *navbar = self.navigationController.navigationBar;
-        UIView *bar = [navbar viewWithTag:SuProgressBarTag];
+        bar = [navbar viewWithTag:SuProgressBarTag];
         if (!bar) {
-            CGSize sz = navbar.bounds.size;
-            bar = [[SuProgressBarView alloc] initWithFrame:(CGRect){0, sz.height - SuProgressBarHeight, 0, SuProgressBarHeight}];
-            bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleWidth;
-            bar.backgroundColor = navbar.window.tintColor;
+            bar = [SuProgressBarView new];
+            bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
+            bar.backgroundColor = navbar.tintColor;
             bar.tag = SuProgressBarTag;
+            bar.frame = (CGRect){0, navbar.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
             [navbar addSubview:bar];
         }
-        return (id)bar;
     } else {
         NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
-        return nil;
     }
+
+    SuProgressFixTintColor(bar);
+    return (id)bar;
 }
 
 - (void)SuProgressForWebView:(UIWebView *)webView {
     SuProgressUIWebView *ogre = [SuProgressUIWebView new];
-    ogre.delegate = [self SuProgressBar];
-    ogre.webView = webView;  // have to unset delegate because it isn't weak :P
-    [[self SuProgressBar].ogres addObject:ogre];
+    ogre.delegate = [self SuProgressBar].king;
+    [[self SuProgressBar].king addOgre:ogre singleUse:NO];
     webView.delegate = ogre;
 }
 
@@ -94,116 +134,177 @@ static UIViewController *SuProgressViewController;
 
 
 
+
+enum SuProgressBarViewState {
+    SuProgressBarViewReady,
+    SuProgressBarViewProgressing,
+    SuProgressBarViewFinishing
+};
+
+
+
+
 @implementation SuProgressBarView {
+    enum SuProgressBarViewState state;
     NSDate *startTime;
     NSDate *lastIncrementTime;
     NSDate *waitAtLeastUntil;
+}
+
+- (id)init {
+    self = [super initWithFrame:CGRectZero];
+    if (self) {
+        _king = [TheKingOfOgres kingWithDelegate:self];
+    }
+    return self;
+}
+
+- (void)becomeFinished {
+    state = SuProgressBarViewFinishing;
+
+    [UIView animateWithDuration:0.1 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+        // if we are already filled, then CoreAnimation is smart and this
+        // block will finish instantly
+        self.frame = (CGRect){0, self.frame.origin.y, self.superview.bounds.size.width, SuProgressBarHeight};
+    } completion:^(BOOL finished) {
+        if (!finished)
+            return;
+
+        NSTimeInterval dt = [[NSDate date] timeIntervalSinceDate:startTime];
+        NSTimeInterval dt2 = [waitAtLeastUntil timeIntervalSinceNow];
+        NSTimeInterval delay = dt2 < 0 ? -dt2 : MAX(0, 1. - dt);
+
+        [UIView animateWithDuration:0.4 delay:delay options:0 animations:^{
+            self.alpha = 0;
+        } completion:^(BOOL finished) {
+            if (finished)
+                self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
+        }];
+    }];
+}
+
+- (void)progressed:(float)progress {
+    if (state == SuProgressBarViewFinishing)
+        // finishing animation is happening. We are going to just override
+        // that, then in finishing animation completion handler we will notice
+        // and stop finishing
+        state = SuProgressBarViewReady;
     
+    if (state == SuProgressBarViewReady) {
+        startTime = [NSDate date];
+        lastIncrementTime = waitAtLeastUntil = nil;
+        state = SuProgressBarViewProgressing;
+        self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
+    }
+    
+    if (progress == 1.f) {
+        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
+        [self becomeFinished];
+    } else {
+        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
+    
+        CGSize sz = self.superview.bounds.size;
+        NSTimeInterval duration = 0.3;
+        NSTimeInterval delay = MIN(0.01, [[NSDate date] timeIntervalSinceDate:lastIncrementTime]);
+        int opts = UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationCurveEaseIn;
+        [UIView animateWithDuration:duration delay:delay options:opts animations:^{
+            self.alpha = 1;
+            self.frame = (CGRect){self.frame.origin, sz.width * progress, SuProgressBarHeight};
+        } completion:nil];
+
+        waitAtLeastUntil = [NSDate dateWithTimeIntervalSinceNow:delay + duration];
+        lastIncrementTime = [NSDate date];
+    }
+}
+
+- (float)progress {
+    return _king.progress;
+}
+
+@dynamic progress;
+@end
+
+
+
+
+@implementation TheKingOfOgres {
     // We trickle a little when jobs start to indicate
     // progress and trickle ocassionally to indicate that
     // stuff is still happening, so the actual portion of
     // the width that is available for actual progress is
     // less than one.
-    float progressPortion;
+    NSMutableArray *singleUses;
 }
 
-- (id)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        startTime = [NSDate date];
-        progressPortion = 0.9;
-        _ogres = [NSMutableArray new];
-        self.progress = 0.05;
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
++ (id)kingWithDelegate:(id<KingOfDelegates>)delegate {
+    TheKingOfOgres *king = [TheKingOfOgres new];
+    king->_delegate = delegate;
+    king->_ogres = [NSMutableArray new];
+    king->singleUses = [NSMutableArray new];
+    return king;
+}
+
+- (void)addOgre:(SuProgress *)ogre singleUse:(BOOL)singleUse {
+    ogre.delegate = self;
+    if (_progress == 0.f) {
+        self.progress = 0.05f; // do an initial trickle (yes, now)
     }
-    return self;
+    [_ogres addObject:ogre];
+    if (singleUse)
+        [singleUses addObject:ogre];
+}
+
+- (void)setProgress:(float)newprogress {
+    //TODO when you return make it so the progress portion of 0.8 is hardcoded
+    // and then we can always know that > 0.9 should have exponential fall off
+    // and then implement that!
+    // AND THEN fix it so it isn't doing that anymore
+
+    if (newprogress < _progress) {
+        NSLog(@"Won't set progress to %f as it's less than current value (%f)", newprogress, _progress);
+        return;
+    }
+    _progress = MIN(1.f, MAX(0.f, newprogress));
+    [_delegate progressed:_progress];
 }
 
 - (void)started:(SuProgress *)ogre {
     if (_progress == 0.05f) {
-        // do an initial trickle, once
-        self.progress = 0.1;
-        progressPortion = 0.8;
+        // a second initial trickle, for eg. NSURLConnection we
+        // do this at header response, and thus gives more
+        // progress feedback
+        self.progress = 0.1f;
     }
 }
 
 - (void)ogre:(SuProgress *)ogre progressed:(float)progress {
-    // TODO should reported progress go > 1 we should still drip,
-    // but in tiny amounts since we will then exceed 90%
-    
-    float remaining_progress = 0;
-    for (id ogre in _ogres)
-        remaining_progress += 1.f - [ogre progress];
+    // TODO should reported-progress for any ogre go > 1
+    // we should still drip, but in tiny amounts since we
+    // will then exceed 90%
 
-    // seems complicated, and… it is, this way to calculate
-    // actual progress allows us to accept new jobs some
-    // time after other jobs were already started
-    // NOTE only works because this delegate method is called
-    // before the ogre's progress property is incremented
-    self.progress += (progress / remaining_progress) * progressPortion;
-}
-
-- (void)setProgress:(float)progress {
-    if (progress < _progress) {
-        NSLog(@"Won't set progress to %f as it's less than current value (%f)", progress, _progress);
-        return;
-    }
-    _progress = progress;
-
-    UIView *bar = self;
-    CGSize sz = self.superview.bounds.size;
-
-    NSTimeInterval duration = 0.3;
-    NSTimeInterval delay = lastIncrementTime ? MAX(0.01, [[NSDate date] timeIntervalSinceDate:lastIncrementTime]) : 0;
-
-    [UIView animateWithDuration:duration delay:delay options:UIViewAnimationOptionBeginFromCurrentState animations:^{
-        bar.frame = (CGRect){bar.frame.origin, sz.width * progress, SuProgressBarHeight};
-    } completion:nil];
-
-    waitAtLeastUntil = [NSDate dateWithTimeIntervalSinceNow:delay + duration];
-    lastIncrementTime = [NSDate date];
-
-    //TODO if progress is greater than or equal to one fade out, but if progress is set again within a time
-    // period come back, OR have a hard-done method… probably depends. With NSURLConnection, we can do that
-    // but in general it may lead to bugs in how people use it, while also going with >= 1 may be the same.
-}
-
-- (BOOL)allOgresFinished {
-    for (id ogre in _ogres)
-        if (![ogre finished])
-            return NO;
-    return YES;
+    self.progress += (progress / (float)_ogres.count) * 0.8;
 }
 
 - (void)finished:(SuProgress *)ogre {
-    if (!self.allOgresFinished)
-        return;
+    for (id ogre in _ogres)
+        if (![ogre finished])
+            return;
 
-    [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-    
-    [UIView animateWithDuration:0.1 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
-        // if we are already filled, then CoreAnimation is smart and this
-        // block will finish instantly
-        self.frame = (CGRect){0, self.frame.origin.y, self.superview.bounds.size.width, SuProgressBarHeight};
-    }
-    completion:^(BOOL finished) {
-        NSTimeInterval dt = [[NSDate date] timeIntervalSinceDate:startTime];
-        NSTimeInterval dt2 = [waitAtLeastUntil timeIntervalSinceNow];
-        NSTimeInterval delay = dt2 < 0 ? -dt2 : MAX(0, 1. - dt);
+    self.progress = 1.f;
 
-        [UIView animateWithDuration:0.4 delay:delay  options:0 animations:^{
-            self.alpha = 0;
-        } completion:^(BOOL finished) {
-            [self removeFromSuperview];
-        }];
-    }];
+    [_ogres removeObjectsInArray:singleUses];
+    [_ogres makeObjectsPerformSelector:@selector(reset)];
+    [singleUses removeAllObjects];
+    _progress = 0.f;  // don't use setter ∵ don't tell delegate
 }
 
 @end
 
 
 
+
 @implementation SuProgress
+
 // FIXME bit dumb to allow setting started to false considering
 // this is an invalid state in fact. Same for finished. Needs enum.
 - (void)setStarted:(BOOL)started {
@@ -212,6 +313,7 @@ static UIViewController *SuProgressViewController;
         [_delegate started:self];
     }
 }
+
 - (void)setFinished:(BOOL)finished {
     _finished = finished;
     if (finished) {
@@ -219,7 +321,15 @@ static UIViewController *SuProgressViewController;
         [_delegate finished:self];
     }
 }
+
+- (void)reset {
+    _started = NO;
+    _finished = NO;
+    _progress = 0.f;
+}
+
 @end
+
 
 
 
@@ -253,8 +363,12 @@ static UIViewController *SuProgressViewController;
             // could start adding a lot and get smaller as we
             // guess the rate and amounts a little
             : 0.01;
+
     [self.delegate ogre:self progressed:f];
     self.progress += f;
+
+    if (self.progress > 1.f)
+        NSLog(@"maxd: %f", self.progress);
 
     if ([_endDelegate respondsToSelector:@selector(connection:didReceiveData:)])
         [_endDelegate connection:connection didReceiveData:data];
@@ -284,9 +398,8 @@ static UIViewController *SuProgressViewController;
     // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
     // progress to our progress bar as its intermediary step.
     SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new];
-    ogre.delegate = [SuProgressViewController SuProgressBar];
     ogre.endDelegate = delegate;
-    [[SuProgressViewController SuProgressBar].ogres addObject:ogre];
+    [SuProgressKing addOgre:ogre singleUse:YES];
 
     // looks weird? Google: objectivec swizzling
     return [self SuProgress_initWithRequest:request delegate:ogre];
@@ -308,13 +421,6 @@ static UIViewController *SuProgressViewController;
     BOOL _interactive;
 }
 
-- (void)setFinished:(BOOL)finished {
-    if (finished) {
-        _webView.delegate = nil;
-    }
-    [super setFinished:finished];
-}
-
 - (void)incrementProgress {
     float progress = self.progress;
     float maxProgress = _interactive ? 1.f : 0.5f;
@@ -323,12 +429,6 @@ static UIViewController *SuProgressViewController;
 
     [self.delegate ogre:self progressed:increment];
     self.progress += increment;
-}
-
-- (void)reset {
-    _maxLoadCount = _loadingCount = 0;
-    _interactive = NO;
-    self.progress = 0.0;
 }
 
 - (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {

@@ -23,7 +23,6 @@
   */
 - (void)SuProgressForWebView:(UIWebView *)webView;
 
-
 - (UIView *)SuProgressBar;
 
 @end

@@ -40,7 +40,7 @@
 - (void)demoWebView {
     [webViewController SuProgressForWebView:webView];
 
-    id url = [NSURL URLWithString:@"http://methylblue.com"];
+    id url = [NSURL URLWithString:@"http://theverge.com"];
     id rq = [NSURLRequest requestWithURL:url];
     [webView loadRequest:rq];
 }
