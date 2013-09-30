@@ -43,10 +43,21 @@ Here’s how to display progress for a UIWebView:
 [viewController SuProgressForWebView:webView]
 ```
 
+TODO
+----
+Typically you need a progress meter for a multi-stage operation, eg. load
+Facebook data for a user, then load data based on that. SuProgress isn't much
+use for this eventuality yet, but it wouldn't be too hard to write a bit more
+API which says: divide the bar into three sections, etc.
+
+Issues
+------
+* The progress bar is anchored to the navigationbar so when you push a new controller onto that UINavigationController's stack, the SuProgressBarView will still be visible during and after the transition. Currently I am not sure of a good solution, so haven't fixed it.
+
 Requirements
 ------------
 * ARC
-* iOS >= 5
+* iOS >= 6 (probably 7 currently, please fork and fix)
 
 Example.xcodeproj
 -----------------
