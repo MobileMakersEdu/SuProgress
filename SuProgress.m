@@ -124,10 +124,14 @@ static void SuProgressFixTintColor(UIView *bar) {
 }
 
 - (void)SuProgressForWebView:(UIWebView *)webView {
-    SuProgressUIWebView *ogre = [SuProgressUIWebView new];
-    ogre.delegate = [self SuProgressBar].king;
-    [[self SuProgressBar].king addOgre:ogre singleUse:NO];
-    webView.delegate = ogre;
+    if (webView.delegate == nil) {
+        SuProgressUIWebView *ogre = [SuProgressUIWebView new];
+        ogre.delegate = [self SuProgressBar].king;
+        [[self SuProgressBar].king addOgre:ogre singleUse:NO];
+        webView.delegate = ogre;
+    } else {
+        NSLog(@"Currently your UIWebView must not have a delegate set for this to work. Yes this is useless");
+    }
 }
 
 @end
@@ -196,6 +200,8 @@ enum SuProgressBarViewState {
         state = SuProgressBarViewProgressing;
         self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
     }
+    
+//    NSLog(@"%f", progress);
     
     if (progress == 1.f) {
         [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
@@ -269,7 +275,7 @@ enum SuProgressBarViewState {
 }
 
 - (void)started:(SuProgress *)ogre {
-    if (_progress == 0.05f) {
+    if (_progress <= 0.05f) {
         // a second initial trickle, for eg. NSURLConnection we
         // do this at header response, and thus gives more
         // progress feedback
@@ -415,74 +421,55 @@ enum SuProgressBarViewState {
 #define SuProgressUIWebViewCompleteRPCURL "webviewprogressproxy:///complete"
 
 @implementation SuProgressUIWebView {
-    NSUInteger _loadingCount;
-    NSUInteger _maxLoadCount;
-    NSURL *_currentURL;
-    BOOL _interactive;
+    NSUInteger loading;
+    NSUInteger cumulativeLoads;
 }
 
-- (void)incrementProgress {
-    float progress = self.progress;
-    float maxProgress = _interactive ? 1.f : 0.5f;
-    float remainPercent = (float)_loadingCount / (float)_maxLoadCount;
-    float increment = (maxProgress - progress) * remainPercent;
-
-    [self.delegate ogre:self progressed:increment];
-    self.progress += increment;
-}
-
-- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
-    if ([request.URL.absoluteString isEqualToString:@SuProgressUIWebViewCompleteRPCURL]) {
-        self.finished = YES;
-        return NO;
+- (void)setFinished:(BOOL)finished {
+    [super setFinished:finished];
+    if (finished) {
+        loading = cumulativeLoads = 0;
     }
-    
-    BOOL isFragmentJump = NO;
-    if (request.URL.fragment) {
-        NSString *nonFragmentURL = [request.URL.absoluteString stringByReplacingOccurrencesOfString:[@"#" stringByAppendingString:request.URL.fragment] withString:@""];
-        isFragmentJump = [nonFragmentURL isEqualToString:webView.request.URL.absoluteString];
-    }
-    
-    BOOL isTopLevelNavigation = [request.mainDocumentURL isEqual:request.URL];
-    
-    BOOL isHTTP = [request.URL.scheme isEqualToString:@"http"] || [request.URL.scheme isEqualToString:@"https"];
-    if (!isFragmentJump && isHTTP && isTopLevelNavigation) {
-        _currentURL = request.URL;
-    }
-    return YES;
 }
 
 - (void)webViewDidStartLoad:(UIWebView *)webView {
-    _loadingCount++;
-    _maxLoadCount = fmax(_maxLoadCount, _loadingCount);
+    loading++;
+    cumulativeLoads++;
     
-    self.started = YES;
-    [self.delegate started:self];
+    NSLog(@"didStartLoad: %d/%d", loading, cumulativeLoads);
+    
+    if (!self.started) {
+        self.started = YES;
+    } else {
+        [self.delegate ogre:self progressed:0.05];
+        self.progress += 0.05;
+    }
 }
 
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
-    _loadingCount--;
-    [self incrementProgress];
+    loading--;
+    NSLog(@"didFinishLoad: %d/%d", loading, cumulativeLoads);
     
-    NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
-    
-    BOOL interactive = [readyState isEqualToString:@"interactive"];
-    if (interactive) {
-        _interactive = YES;
-        // this callsback on webView:shouldStartLoadWithRequest:navigationType
-        // when it has finished executing, indicating to us that loading has
-        // completed (sorta, images usually still flicker in)
-        [webView stringByEvaluatingJavaScriptFromString:@"window.addEventListener('load',function() { var iframe = document.createElement('iframe'); iframe.style.display = 'none'; iframe.src = '" SuProgressUIWebViewCompleteRPCURL "'; document.body.appendChild(iframe);  }, false);"];
-    }
-    
-    BOOL isNotRedirect = [_currentURL isEqual:webView.request.mainDocumentURL];
-    BOOL complete = [readyState isEqualToString:@"complete"];
-    if (complete && isNotRedirect) {
-        self.finished = YES;
+    float f = (1.f/cumulativeLoads) * (0.8f - self.progress);  // NOTE can still go over, doh
+    [self.delegate ogre:self progressed:f];
+    self.progress += f;
+
+    if (loading == 0) {
+        [NSObject cancelPreviousPerformRequestsWithTarget:self];
+        [self performSelector:@selector(ontimeout:) withObject:webView afterDelay:0.1];
     }
 }
 
+- (void)ontimeout:(UIWebView *)webView {
+    NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
+    if (loading == 0 && [readyState isEqualToString:@"complete"])
+        self.finished = YES;
+    else
+        [self performSelector:@selector(ontimeout:) withObject:webView afterDelay:0.1];
+}
+
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
+    NSLog(@"FAILED: =>");
     [self webViewDidFinishLoad:webView];
 }
 
