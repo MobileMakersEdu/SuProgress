@@ -18,8 +18,10 @@
 - (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block;
 
 
-/** The UIWebView does not need to be in the viewController's
-  * view or anything.
+/** Do this *after* you have set the UIWebView's delegate
+  * we will then proxy delegate events as we need them too
+  * TODO feel free to implement a swizzling way to do this
+  * but please be sure to handle the whole state matrix.
   */
 - (void)SuProgressForWebView:(UIWebView *)webView;
 

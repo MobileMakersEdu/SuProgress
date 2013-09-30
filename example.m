@@ -1,7 +1,7 @@
 @import UIKit;
 #import "SuProgress.h"
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate, NSURLConnectionDelegate> {
+@interface AppDelegate : UIResponder <UIApplicationDelegate, NSURLConnectionDelegate, UIWebViewDelegate> {
     UIViewController *connectionsViewController;
     UIViewController *webViewController;
     NSMutableDictionary *datas;
@@ -38,6 +38,7 @@
 }
 
 - (void)demoWebView {
+    webView.delegate = self;  // you must call the SuProgress method AFTER setting the webView's delegate
     [webViewController SuProgressForWebView:webView];
 
     id url = [NSURL URLWithString:@"http://theverge.com"];

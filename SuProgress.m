@@ -60,6 +60,7 @@
 @end
 
 @interface SuProgressUIWebView : SuProgress <UIWebViewDelegate>
+@property (nonatomic) id<UIWebViewDelegate> endDelegate;
 @end
 
 
@@ -124,13 +125,17 @@ static void SuProgressFixTintColor(UIView *bar) {
 }
 
 - (void)SuProgressForWebView:(UIWebView *)webView {
-    if (webView.delegate == nil) {
+    if (![webView.delegate isKindOfClass:[SuProgress class]]) {
         SuProgressUIWebView *ogre = [SuProgressUIWebView new];
         ogre.delegate = [self SuProgressBar].king;
         [[self SuProgressBar].king addOgre:ogre singleUse:NO];
+        ogre.endDelegate = webView.delegate;
         webView.delegate = ogre;
     } else {
-        NSLog(@"Currently your UIWebView must not have a delegate set for this to work. Yes this is useless");
+        // TODO ideally use some kind of weak pointer inside an nsarray wrapper and
+        // then we can detect when this happens and it will be fine. Otherwise we
+        // need a manual method (add another method and contract user to call it)
+        NSLog(@"UIWebView delegate is already a SuProgress, changing delegate at this point is unsupported and will have strange effects");
     }
 }
 
@@ -358,7 +363,7 @@ enum SuProgressBarViewState {
     }
     self.started = YES;
     
-    if ([_endDelegate respondsToSelector:@selector(connection:didReceiveResponse:)])
+    if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didReceiveResponse:rsp];
 }
 
@@ -376,19 +381,19 @@ enum SuProgressBarViewState {
     if (self.progress > 1.f)
         NSLog(@"maxd: %f", self.progress);
 
-    if ([_endDelegate respondsToSelector:@selector(connection:didReceiveData:)])
+    if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didReceiveData:data];
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
     self.finished = YES;
-    if ([_endDelegate respondsToSelector:@selector(connection:didFailWithError:)])
+    if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didFailWithError:error];
 }
 
 - (void)connectionDidFinishLoading:(id)connection {
     self.finished = YES;
-    if ([_endDelegate respondsToSelector:@selector(connectionDidFinishLoading:)])
+    if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connectionDidFinishLoading:connection];
 }
 
@@ -416,8 +421,6 @@ enum SuProgressBarViewState {
 
 
 
-// Inspired by: https://github.com/ninjinkun/NJKWebViewProgress
-
 #define SuProgressUIWebViewCompleteRPCURL "webviewprogressproxy:///complete"
 
 @implementation SuProgressUIWebView {
@@ -444,6 +447,9 @@ enum SuProgressBarViewState {
         [self.delegate ogre:self progressed:0.05];
         self.progress += 0.05;
     }
+    
+    if ([_endDelegate respondsToSelector:_cmd])
+        [_endDelegate webViewDidStartLoad:webView];
 }
 
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
@@ -458,6 +464,9 @@ enum SuProgressBarViewState {
         [NSObject cancelPreviousPerformRequestsWithTarget:self];
         [self performSelector:@selector(ontimeout:) withObject:webView afterDelay:0.1];
     }
+
+    if ([_endDelegate respondsToSelector:_cmd])
+        [_endDelegate webViewDidFinishLoad:webView];
 }
 
 - (void)ontimeout:(UIWebView *)webView {
@@ -471,6 +480,8 @@ enum SuProgressBarViewState {
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
     NSLog(@"FAILED: =>");
     [self webViewDidFinishLoad:webView];
+    if ([_endDelegate respondsToSelector:_cmd])
+        [_endDelegate webView:webView didFailLoadWithError:error];
 }
 
 @end
