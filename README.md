@@ -2,10 +2,9 @@ Pronounced “Super Ogress” (as in a female Ogre who is also a super-hero),
 SuProgress is a utlitity library to show a iOS-7-Safari-style progress bar under
 the UINavigationBar for your app.
 
-Crucially SuProgress is a drop-in library for common progress types eg.
-NSURLConnection, UIWebView, AFNetworking, and NSProgress.
+SuProgress is an easy to user, drop-in library for common progress types eg. NSURLConnection, UIWebView, and AFNetworking’s AFHTTPRequestOperation.
 
-![gif](http://methylblue.com/images/SuProgressExample.gif)
+![gif](http://mobilemakersacademy.github.com/SuProgress/SuProgress.gif)
 
 SuProgress was made by [Mobile Makers][mm], Chicago, an eight week intense
 learning experience that will take you from beginner to professional iOS
@@ -43,12 +42,26 @@ Here’s how to display progress for a UIWebView:
 [viewController SuProgressForWebView:webView]
 ```
 
+And AFNetworking:
+
+```objc
+[viewController SuProgressForAFHTTPRequestOperation:operation];
+```
+
+Caveats
+-------
+Currently we cannot handle NSURLConnections initialized via 
+`sendAsynchronousRequest:queue:completionHandler:`. Please help us fix this!
+
 TODO
 ----
 Typically you need a progress meter for a multi-stage operation, eg. load
 Facebook data for a user, then load data based on that. SuProgress isn't much
 use for this eventuality yet, but it wouldn't be too hard to write a bit more
 API which says: divide the bar into three sections, etc.
+
+We plan to make `SuProgress` monitors for `NSProgress`, `NSOperationQueue`, pull
+requests for any progress type welcome.
 
 Issues
 ------

@@ -3,7 +3,6 @@
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#import <objc/objc-runtime.h>
 #define SuProgressBarTag 51381
 #define SuProgressBarHeight 2
 
@@ -372,7 +371,7 @@ enum SuProgressBarViewState {
 
 @implementation SuProgress
 
-#warning FIXME bit dumb to allow setting started to false considering
+// FIXME bit dumb to allow setting started to false considering
 // this is an invalid state in fact. Same for finished. Needs enum.
 - (void)setStarted:(BOOL)started {
     _started = started;
