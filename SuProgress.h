@@ -2,7 +2,7 @@
 //  BSD licensed. See the README.
 
 #import <UIKit/UIKit.h>
-
+@class AFHTTPRequestOperation;
 
 
 @interface UIViewController (SuProgress)
@@ -14,7 +14,7 @@
 /** NOTE currently this does not compare the thread ID, so
   * connections from multiple threads will proxy and we
   * are not trying to be thread safe so it may go all weird
-  * on your ass. */
+  * on you. */
 - (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block;
 
 
@@ -27,9 +27,9 @@
 
 - (UIView *)SuProgressBar;
 
-/** Not as convenient as for NSURLConnection, currently, we will
+/** Not as convenient as for NSURLConnection, currently. We will
   * fix this soon.
   */
-- (void)SuProgressForAFHTTPRequestOperation:(id)operation;
+- (void)SuProgressForAFHTTPRequestOperation:(AFHTTPRequestOperation *)operation;
 
 @end

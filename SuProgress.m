@@ -7,13 +7,13 @@
 #define SuProgressBarTag 51381
 #define SuProgressBarHeight 2
 
-@protocol SuProgressDelegate
+@protocol SuProgressDelegate <NSObject>
 - (void)started:(id)ogre;
 - (void)ogre:(id)ogre progressed:(float)progress;
 - (void)finished:(id)ogre;
 @end
 
-@protocol KingOfDelegates
+@protocol KingOfDelegates <NSObject>
 - (void)progressed:(float)progress;
 @end
 
@@ -468,29 +468,23 @@ enum SuProgressBarViewState {
 
 @implementation NSURLConnection (Debug)
 
-// seemingly these do not call each other :P
+// Annoyingly the unswizzled methods do not defer to one of these
+// two so we must swizzle them both with near identical code.
 
-- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately
-{
-    // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
-    // progress to our progress bar as its intermediary step.
-    SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new];
-    ogre.endDelegate = delegate;
-    [SuProgressKing addOgre:ogre singleUse:YES];
+// Our ogre acts as an NSURLConnectionDelegate proxy, and filters
+// progress to our progress bar as its intermediary step.
+#define SuNSURLConnectionOgreMacro \
+    SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new]; \
+    ogre.endDelegate = delegate; \
+    [SuProgressKing addOgre:ogre singleUse:YES]
 
-    // looks weird? Google: objectivec swizzling
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately {
+    SuNSURLConnectionOgreMacro;
     return [self SuProgress_initWithRequest:request delegate:ogre startImmediately:startImmediately];
 }
 
-- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate
-{
-    // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
-    // progress to our progress bar as its intermediary step.
-    SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new];
-    ogre.endDelegate = delegate;
-    [SuProgressKing addOgre:ogre singleUse:YES];
-    
-    // looks weird? Google: objectivec swizzling
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate {
+    SuNSURLConnectionOgreMacro;
     return [self SuProgress_initWithRequest:request delegate:ogre];
 }
 
