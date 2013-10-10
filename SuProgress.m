@@ -169,6 +169,10 @@ enum SuProgressBarViewState {
     return self;
 }
 
+- (void)dealloc {
+    [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
+}
+
 - (void)becomeFinished {
     state = SuProgressBarViewFinishing;
 
