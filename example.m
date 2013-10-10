@@ -1,10 +1,16 @@
 @import UIKit;
 #import "SuProgress.h"
 
+// uncomment to generate the AFNetworking example as well
+//#import "AFNetworking.h"
+
 @interface AppDelegate : UIResponder <UIApplicationDelegate, NSURLConnectionDelegate, UIWebViewDelegate> {
     UIViewController *connectionsViewController;
     UIViewController *webViewController;
     NSMutableDictionary *datas;
+  #ifdef _AFNETWORKING_
+    UIViewController *afnetworkingController;
+  #endif
     UITextView *textView;
     UIWebView *webView;
 }
@@ -35,6 +41,20 @@
             datas[url] = [NSMutableData new];
         }
     }];
+
+//    [connectionsViewController SuProgressURLConnectionsCreatedInBlock:^{
+//        __block int count = [urls count];
+//        for (id urlstr in urls) {
+//            id url = [NSURL URLWithString:urlstr];
+//            id rq = [NSURLRequest requestWithURL:url];
+//            
+//            [NSURLConnection sendAsynchronousRequest:rq queue:[NSOperationQueue mainQueue] completionHandler:^(NSURLResponse *response, NSData *data, NSError *connectionError) {
+//                [self appendText:[NSString stringWithFormat:@"Loaded: %@ (%d bytes)", url, [data length]]];
+//                if (--count == 0)
+//                    [self appendText:@"Done"];
+//            }];
+//        }
+//    }]
 }
 
 - (void)demoWebView {
@@ -46,6 +66,25 @@
     [webView loadRequest:rq];
 }
 
+#ifdef _AFNETWORKING_
+- (void)demoAFNetworking {
+    [self fadeOutKittens];
+
+    id url = [NSString stringWithFormat:@"http://placekitten.com/%d/%d", (200 + arc4random() % 120)*2, (200 + arc4random() % 120) * 2];
+    url = [NSURL URLWithString:url];
+    AFHTTPRequestOperation *op = [[AFHTTPRequestOperation alloc] initWithRequest:[NSURLRequest requestWithURL:url]];
+    op.responseSerializer = [AFImageResponseSerializer serializer];
+    [op setCompletionBlockWithSuccess:^(AFHTTPRequestOperation *operation, UIImage *image) {
+        [self addKitten:image];
+    } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
+        [[[UIAlertView alloc] initWithTitle:@"Suckage Occurred!" message:@"So much SUCK" delegate:nil cancelButtonTitle:@"I Concur: It Sucks" otherButtonTitles:nil] show];
+    }];
+    
+    [afnetworkingController SuProgressForAFHTTPRequestOperation:op];
+    
+    [[NSOperationQueue mainQueue] addOperation:op];
+}
+#endif
 
 
 
@@ -56,12 +95,11 @@
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
     id url = connection.originalRequest.URL;
     [self appendText:[NSString stringWithFormat:@"Loaded: %@ (%d bytes)", url, [datas[url] length]]];
-
+    
     [datas removeObjectForKey:url];
     if (datas.count == 0)
         [self appendText:@"Done"];
 }
-
 
 
 
@@ -116,10 +154,23 @@
     UINavigationController *navigationController2 = [UINavigationController new];
     [navigationController2 pushViewController:webViewController animated:NO];
 
+  #ifdef _AFNETWORKING_
+    afnetworkingController = [UIViewController new];
+    afnetworkingController.title = @"AFNetworking Example";
+    afnetworkingController.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"AFNetworking" image:square selectedImage:square];
+    afnetworkingController.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemPlay target:self action:@selector(demoAFNetworking)];
+    
+    UINavigationController *navigationController3 = [UINavigationController new];
+    [navigationController3 pushViewController:afnetworkingController animated:NO];
+  #endif
+
     UITabBarController *tabs = [UITabBarController new];
     tabs.viewControllers = @[
         navigationController1,
-        navigationController2
+        navigationController2,
+      #ifdef _AFNETWORKING_
+        navigationController3
+      #endif
     ];
     
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
@@ -132,6 +183,33 @@
     text = [@"=> " stringByAppendingString:text];
     textView.text = [[[textView.text componentsSeparatedByString:@"\n"] arrayByAddingObject:text] componentsJoinedByString:@"\n"];
 }
+
+#ifdef _AFNETWORKING_
+- (void)fadeOutKittens {
+    NSArray *views = afnetworkingController.view.subviews;
+    [UIView animateWithDuration:1 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
+        for (UIView *view in views) {
+            view.transform = CGAffineTransformMakeTranslation(0, 300);
+            view.alpha = 0;
+        }
+    } completion:^(BOOL finished) {
+        [views makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    }];
+}
+
+- (void)addKitten:(UIImage *)image {
+    UIImageView *iv = [[UIImageView alloc] initWithImage:image];
+    [iv sizeToFit];
+    iv.center = afnetworkingController.view.center;
+    [afnetworkingController.view addSubview:iv];
+    iv.alpha = 0;
+    iv.transform = CGAffineTransformMakeTranslation(0, -40);
+    [UIView animateWithDuration:0.3 animations:^{
+        iv.transform = CGAffineTransformIdentity;
+        iv.alpha = 1;
+    }];
+}
+#endif
 
 @end
 

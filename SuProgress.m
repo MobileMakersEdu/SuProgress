@@ -3,6 +3,7 @@
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/objc-runtime.h>
 #define SuProgressBarTag 51381
 #define SuProgressBarHeight 2
 
@@ -17,7 +18,7 @@
 @end
 
 @interface NSURLConnection (SuProgress)
-- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate;
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately;
 @end
 
 @interface SuProgress : NSObject
@@ -64,6 +65,8 @@
 @property (nonatomic) id<UIWebViewDelegate> endDelegate;
 @end
 
+static const char *SuAFHTTPRequestOperationViewControllerKey;
+
 
 
 // Used inside SuProgressURLConnectionsCreatedInBlock
@@ -79,14 +82,23 @@ static TheKingOfOgres *SuProgressKing;
 
 - (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block {
     Class class = [NSURLConnection class];
-    Method original = class_getInstanceMethod(class, @selector(initWithRequest:delegate:));
-    Method swizzle = class_getInstanceMethod(class, @selector(SuProgress_initWithRequest:delegate:));
+    id methods = @[@"initWithRequest:delegate:startImmediately:", @"initWithRequest:delegate:"];
+    
+    for (id method in methods) {
+        Method original = class_getInstanceMethod(class, NSSelectorFromString(method));
+        Method swizzle = class_getInstanceMethod(class,  NSSelectorFromString([@"SuProgress_" stringByAppendingString:method]));
+        method_exchangeImplementations(original, swizzle);
+    }
 
-    method_exchangeImplementations(original, swizzle);
     SuProgressKing = [self SuProgressBar].king;
     block();
     SuProgressKing = nil;
-    method_exchangeImplementations(swizzle, original);  // put it back
+
+    for (id method in methods) {
+        Method original = class_getInstanceMethod(class, NSSelectorFromString(method));
+        Method swizzle = class_getInstanceMethod(class,  NSSelectorFromString([@"SuProgress_" stringByAppendingString:method]));
+        method_exchangeImplementations(swizzle, original);
+    }
 }
 
 static void SuProgressFixTintColor(UIView *bar) {
@@ -140,6 +152,41 @@ static void SuProgressFixTintColor(UIView *bar) {
     }
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundeclared-selector"
+
+static void SuAFURLHTTPRequest_operationDidStart(id self, SEL _cmd)
+{
+    UIViewController *vc = objc_getAssociatedObject(self, &SuAFHTTPRequestOperationViewControllerKey);
+    [vc SuProgressURLConnectionsCreatedInBlock:^{
+        Class superclass = NSClassFromString(@"AFHTTPRequestOperation");
+        void (*superIMP)(id, SEL) = (void *)[superclass instanceMethodForSelector:@selector(operationDidStart)];
+        superIMP(self, _cmd);
+    }];
+}
+
+- (void)SuProgressForAFHTTPRequestOperation:(id)operation {
+    Class AFHTTPRequestOperation = NSClassFromString(@"AFHTTPRequestOperation");
+    
+    if (![operation isKindOfClass:AFHTTPRequestOperation]) {
+        NSLog(@"SuProgress: Only AFHTTPRequestOperation is supported currently");
+        return;
+    }
+    
+    static Class SuAFHTTPRequestOperation = nil;
+    if (!SuAFHTTPRequestOperation) {
+        SuAFHTTPRequestOperation = objc_allocateClassPair(AFHTTPRequestOperation, "SuAFHTTPRequestOperation", 0);
+        
+        Method operationDidStart = class_getInstanceMethod(AFHTTPRequestOperation, @selector(operationDidStart));
+        const char *types = method_getTypeEncoding(operationDidStart);
+        class_addMethod(SuAFHTTPRequestOperation, @selector(operationDidStart), (IMP)SuAFURLHTTPRequest_operationDidStart, types);
+    }
+    object_setClass(operation, SuAFHTTPRequestOperation);
+    objc_setAssociatedObject(operation, &SuAFHTTPRequestOperationViewControllerKey, self, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+#pragma clang diagnostic pop
+
 @end
 
 
@@ -153,6 +200,7 @@ enum SuProgressBarViewState {
 
 
 
+#warning FIXME ensure all UI work is done on UI thread, we can't be sure what thread we will be invoked on
 
 @implementation SuProgressBarView {
     enum SuProgressBarViewState state;
@@ -210,8 +258,6 @@ enum SuProgressBarViewState {
         state = SuProgressBarViewProgressing;
         self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
     }
-    
-//    NSLog(@"%f", progress);
     
     if (progress == 1.f) {
         [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
@@ -321,7 +367,7 @@ enum SuProgressBarViewState {
 
 @implementation SuProgress
 
-// FIXME bit dumb to allow setting started to false considering
+#warning FIXME bit dumb to allow setting started to false considering
 // this is an invalid state in fact. Same for finished. Needs enum.
 - (void)setStarted:(BOOL)started {
     _started = started;
@@ -418,7 +464,9 @@ enum SuProgressBarViewState {
 
 @implementation NSURLConnection (Debug)
 
-- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate
+// seemingly these do not call each other :P
+
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately
 {
     // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
     // progress to our progress bar as its intermediary step.
@@ -426,6 +474,18 @@ enum SuProgressBarViewState {
     ogre.endDelegate = delegate;
     [SuProgressKing addOgre:ogre singleUse:YES];
 
+    // looks weird? Google: objectivec swizzling
+    return [self SuProgress_initWithRequest:request delegate:ogre startImmediately:startImmediately];
+}
+
+- (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate
+{
+    // Our ogre acts as an NSURLConnectionDelegate proxy, and filters
+    // progress to our progress bar as its intermediary step.
+    SuProgressNSURLConnection *ogre = [SuProgressNSURLConnection new];
+    ogre.endDelegate = delegate;
+    [SuProgressKing addOgre:ogre singleUse:YES];
+    
     // looks weird? Google: objectivec swizzling
     return [self SuProgress_initWithRequest:request delegate:ogre];
 }
@@ -495,5 +555,7 @@ enum SuProgressBarViewState {
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate webView:webView didFailLoadWithError:error];
 }
+
+//TODO uiWebView:identifierForInitialRequest:fromDataSource:
 
 @end

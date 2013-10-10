@@ -27,4 +27,9 @@
 
 - (UIView *)SuProgressBar;
 
+/** Not as convenient as for NSURLConnection, currently, we will
+  * fix this soon.
+  */
+- (void)SuProgressForAFHTTPRequestOperation:(id)operation;
+
 @end
