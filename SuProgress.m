@@ -200,7 +200,6 @@ enum SuProgressBarViewState {
 
 
 
-#warning FIXME ensure all UI work is done on UI thread, we can't be sure what thread we will be invoked on
 
 @implementation SuProgressBarView {
     enum SuProgressBarViewState state;
@@ -372,7 +371,7 @@ enum SuProgressBarViewState {
 - (void)setStarted:(BOOL)started {
     _started = started;
     if (started) {
-        [_delegate started:self];
+        [(NSObject *)_delegate performSelectorOnMainThread:@selector(started:) withObject:self waitUntilDone:NO];
     }
 }
 
@@ -380,7 +379,7 @@ enum SuProgressBarViewState {
     _finished = finished;
     if (finished) {
         _progress = 1;
-        [_delegate finished:self];
+        [(NSObject *)_delegate performSelectorOnMainThread:@selector(finished:) withObject:self waitUntilDone:NO];
     }
 }
 
@@ -435,11 +434,16 @@ enum SuProgressBarViewState {
             // guess the rate and amounts a little
             : 0.01;
 
-    [self.delegate ogre:self progressed:f];
-    self.progress += f;
+    void (^block)(void) = ^{
+        [self.delegate ogre:self progressed:f];
+    };
 
-    if (self.progress > 1.f)
-        NSLog(@"maxd: %f", self.progress);
+    if ([NSThread currentThread] != [NSThread mainThread])
+        [[NSOperationQueue mainQueue] addOperationWithBlock:block];
+    else
+        block();
+
+    self.progress += f;
 
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didReceiveData:data];
