@@ -26,6 +26,7 @@
 @property (nonatomic) BOOL started;
 @property (nonatomic) BOOL finished;
 - (void)reset;
+- (id)endDelegate;
 @end
 
 @interface TheKingOfOgres : NSObject <SuProgressDelegate>
@@ -339,6 +340,15 @@ enum SuProgressBarViewState {
     _progress = 0.f;
 }
 
+- (void)forwardInvocation:(NSInvocation *)invocation {
+    if ([self.endDelegate respondsToSelector:invocation.selector])
+        [invocation invokeWithTarget:self.endDelegate];
+}
+
+- (id)endDelegate {
+    return nil;
+}
+
 @end
 
 
@@ -420,8 +430,6 @@ enum SuProgressBarViewState {
 
 
 
-
-#define SuProgressUIWebViewCompleteRPCURL "webviewprogressproxy:///complete"
 
 @implementation SuProgressUIWebView {
     NSUInteger loading;
