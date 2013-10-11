@@ -395,6 +395,10 @@ enum SuProgressBarViewState {
     _progress = 0.f;
 }
 
+- (BOOL)respondsToSelector:(SEL)aSelector {
+    return [super respondsToSelector:aSelector] ?: [self.endDelegate respondsToSelector:aSelector];
+}
+
 - (void)forwardInvocation:(NSInvocation *)invocation {
     if ([self.endDelegate respondsToSelector:invocation.selector])
         [invocation invokeWithTarget:self.endDelegate];
@@ -554,7 +558,7 @@ enum SuProgressBarViewState {
 }
 
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
-    NSLog(@"FAILED: =>");
+    NSLog(@"FAILED: => %@", error);
     [self webViewDidFinishLoad:webView];
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate webView:webView didFailLoadWithError:error];
