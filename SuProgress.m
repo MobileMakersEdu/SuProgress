@@ -101,19 +101,27 @@ static TheKingOfOgres *SuProgressKing;
     }
 }
 
-static void SuProgressFixTintColor(UIView *bar) {
+static UIColor *SuProgressBarColor(UIView *bar) {
+    if (![UIView instancesRespondToSelector:@selector(tintColor)])
+      #ifdef SuProgressTintColor
+        return SuProgressTintColor;
+      #else
+        return [UIColor blueColor];
+      #endif
+
     CGFloat white, alpha;
     [bar.tintColor getWhite:&white alpha:&alpha];
     if (alpha == 0) {
         NSLog(@"Will not set a completely transparent tintColor, using window.tintColor");
-        bar.tintColor = bar.window.tintColor;
+        return bar.window.tintColor;
         CGFloat white, alpha;
         [bar.tintColor getWhite:&white alpha:&alpha];
         if (alpha == 0) {
             NSLog(@"Will not set a completely transparent tintColor, using blueColor");
-            bar.tintColor = [UIColor blueColor];
+            return [UIColor blueColor];
         }
     }
+    return bar.tintColor;
 }
 
 - (SuProgressBarView *)SuProgressBar {
@@ -124,7 +132,7 @@ static void SuProgressFixTintColor(UIView *bar) {
         if (!bar) {
             bar = [SuProgressBarView new];
             bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
-            bar.backgroundColor = navbar.tintColor;
+            bar.backgroundColor = SuProgressBarColor(navbar);
             bar.tag = SuProgressBarTag;
             bar.frame = (CGRect){0, navbar.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
             [navbar addSubview:bar];
@@ -132,8 +140,6 @@ static void SuProgressFixTintColor(UIView *bar) {
     } else {
         NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
     }
-
-    SuProgressFixTintColor(bar);
     return (id)bar;
 }
 
