@@ -48,6 +48,11 @@ And AFNetworking:
 [viewController SuProgressForAFHTTPRequestOperation:operation];
 ```
 
+Installation
+------------
+* Via [CocoaPods](http://cocoapods.org): `pod 'SuProgress'`;
+* ***Or***, just copy `SuProgress.h` and `SuProgress.m` into your project
+
 Caveats
 -------
 Currently we cannot handle NSURLConnections initialized via 
