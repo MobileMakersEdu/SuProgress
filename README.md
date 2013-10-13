@@ -25,8 +25,7 @@ SuProgress is super easy to use:
 Any NSURLConnections created in that block have their progress proxied to the
 SuProgressBarView, which we also create and maintain for you.
 
-Of course this means **any** frameworks or methods you call that operate via
-NSURLConnection will have their progress proxied. For example, the Facebook SDK:
+Of course this means **any** frameworks or methods you call in this block that operate via NSURLConnection will have their progress proxied (it doesn't matter how deep the call stack goes before the NSURLConnection is instantiated). For example, the Facebook SDK:
 
 ```objc
 [viewController SuProgressURLConnectionsCreatedInBlock:^{
@@ -58,6 +57,15 @@ Caveats
 Currently we cannot handle NSURLConnections initialized via 
 `sendAsynchronousRequest:queue:completionHandler:`. Please help us fix this!
 
+Help! It Doesn't Work!
+----------------------
+Any `NSURLConnection`s created inside the
+`SuProgressURLConnectionsCreatedInBlock` block will have their progress
+monitored. Thus if it isn't working then the NSURLConnections are not being
+created inside the block! Often with third-party frameworks this implies the
+connections are being created in a separate GCD queue. At this time we don't
+have a good solution for this.
+
 TODO
 ----
 Typically you need a progress meter for a multi-stage operation, eg. load
@@ -80,6 +88,10 @@ Requirements
 Example.xcodeproj
 -----------------
 The example only builds with Xcode 5.
+
+Apps Using SuProgress
+---------------------
+* Popular Pays
 
 License
 =======
