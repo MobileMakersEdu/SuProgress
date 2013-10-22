@@ -30,7 +30,8 @@
         @"http://methylblue.com/images/as_big.png",
         @"https://www.google.com/#q=foo",
         @"http://methylblue.com/images/Favstand.jpg",
-        @"http://methylblue.com/images/zombieland_005.jpeg"
+        @"http://methylblue.com/images/zombieland_005.jpeg",
+        @"https://abs.twimg.com/a/1382379960/images/resources/twitter-bird-white-on-blue.png"
     ];
     [connectionsViewController SuProgressURLConnectionsCreatedInBlock:^{
         datas = [NSMutableDictionary new];
