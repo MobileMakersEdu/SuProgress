@@ -60,8 +60,11 @@
 }
 
 - (void)demoWebView {
-    webView.delegate = self;  // you must call the SuProgress method AFTER setting the webView's delegate
-    [webViewController SuProgressForWebView:webView];
+    //NOTE! don't set the delegate to anything else, it breaks SuProgress
+    if (webView.delegate == nil) {
+        webView.delegate = self;  // you must call the SuProgress method AFTER setting the webView's delegate
+        [webViewController SuProgressForWebView:webView];
+    }
 
     id url = [NSURL URLWithString:@"http://theverge.com"];
     id rq = [NSURLRequest requestWithURL:url];
