@@ -73,8 +73,8 @@ Facebook data for a user, then load data based on that. SuProgress isn't much
 use for this eventuality yet, but it wouldn't be too hard to write a bit more
 API which says: divide the bar into three sections, etc.
 
-We plan to make `SuProgress` monitors for `NSProgress`, `NSOperationQueue`, pull
-requests for any progress type welcome.
+We plan to make `SuProgress` monitors for `NSProgress`, `NSOperationQueue` and
+`NSURLSession` pull requests for any progress type welcome.
 
 Issues
 ------
