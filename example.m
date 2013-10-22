@@ -27,10 +27,12 @@
     id urls = @[
         @"http://mobilemakers.co",
         @"http://theverge.com",
-        @"http://methylblue.com/images/as_big.png",
+        @"http://mxcl.github.io/images/TDAndroid_big.png",
         @"https://www.google.com/#q=foo",
-        @"http://methylblue.com/images/Favstand.jpg",
-        @"http://methylblue.com/images/zombieland_005.jpeg"
+        @"http://brew.sh",
+        @"http://placekitten.com/450/450",
+        @"http://digg.com",
+        @"https://abs.twimg.com/a/1382379960/images/resources/twitter-bird-white-on-blue.png"
     ];
     [connectionsViewController SuProgressURLConnectionsCreatedInBlock:^{
         datas = [NSMutableDictionary new];
