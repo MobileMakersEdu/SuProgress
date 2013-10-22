@@ -7,24 +7,33 @@
 #define SuProgressBarHeight 2
 
 @protocol SuProgressDelegate <NSObject>
-- (void)started:(id)ogre;
-- (void)ogre:(id)ogre progressed:(float)progress;
-- (void)finished:(id)ogre;
+- (void)ogred:(id)ogre;
 @end
 
 @protocol KingOfDelegates <NSObject>
 - (void)progressed:(float)progress;
+- (void)finished;
 @end
 
 @interface NSURLConnection (SuProgress)
 - (id)SuProgress_initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately;
 @end
 
-@interface SuProgress : NSObject
+@interface SuProgress : NSObject {
+    float properProgress;
+
+    // trickles are more indeterminate amounts of progress
+    // we calculate the overall progres from trickled and
+    // the real known progress above. Most progress types
+    // trickle at some point, eg. to indicate connection
+    // accepted
+    float trickled;
+
+    BOOL finished;
+}
+@property (nonatomic, readonly) float progress;
+@property (nonatomic, readonly) BOOL finished;
 @property (nonatomic, weak) id<SuProgressDelegate> delegate;
-@property (nonatomic) float progress;
-@property (nonatomic) BOOL started;
-@property (nonatomic) BOOL finished;
 - (void)reset;
 - (id)endDelegate;
 @end
@@ -143,18 +152,11 @@ static UIColor *SuProgressBarColor(UIView *bar) {
 }
 
 - (void)SuProgressForWebView:(UIWebView *)webView {
-    if (![webView.delegate isKindOfClass:[SuProgress class]]) {
-        SuProgressUIWebView *ogre = [SuProgressUIWebView new];
-        ogre.delegate = [self SuProgressBar].king;
-        [[self SuProgressBar].king addOgre:ogre singleUse:NO];
-        ogre.endDelegate = webView.delegate;
-        webView.delegate = ogre;
-    } else {
-        // TODO ideally use some kind of weak pointer inside an nsarray wrapper and
-        // then we can detect when this happens and it will be fine. Otherwise we
-        // need a manual method (add another method and contract user to call it)
-        NSLog(@"UIWebView delegate is already a SuProgress, changing delegate at this point is unsupported and will have strange effects");
-    }
+    SuProgressUIWebView *ogre = [SuProgressUIWebView new];
+    ogre.delegate = [self SuProgressBar].king;
+    [[self SuProgressBar].king addOgre:ogre singleUse:NO];
+    ogre.endDelegate = webView.delegate;
+    webView.delegate = ogre;
 }
 
 #pragma clang diagnostic push
@@ -209,7 +211,6 @@ enum SuProgressBarViewState {
 @implementation SuProgressBarView {
     enum SuProgressBarViewState state;
     NSDate *startTime;
-    NSDate *lastIncrementTime;
     NSDate *waitAtLeastUntil;
 }
 
@@ -225,7 +226,7 @@ enum SuProgressBarViewState {
     [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
 }
 
-- (void)becomeFinished {
+- (void)finished {   // delegate method TODO name better dumbo
     state = SuProgressBarViewFinishing;
 
     [UIView animateWithDuration:0.1 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
@@ -246,6 +247,8 @@ enum SuProgressBarViewState {
             if (finished)
                 self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
         }];
+
+        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
     }];
 }
 
@@ -255,32 +258,25 @@ enum SuProgressBarViewState {
         // that, then in finishing animation completion handler we will notice
         // and stop finishing
         state = SuProgressBarViewReady;
-    
+
     if (state == SuProgressBarViewReady) {
         startTime = [NSDate date];
-        lastIncrementTime = waitAtLeastUntil = nil;
+        waitAtLeastUntil = nil;
         state = SuProgressBarViewProgressing;
         self.frame = (CGRect){self.frame.origin, 0, self.frame.size.height};
     }
     
-    if (progress == 1.f) {
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = NO;
-        [self becomeFinished];
-    } else {
-        [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
-    
-        CGSize sz = self.superview.bounds.size;
-        NSTimeInterval duration = 0.3;
-        NSTimeInterval delay = MIN(0.01, [[NSDate date] timeIntervalSinceDate:lastIncrementTime]);
-        int opts = UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationCurveEaseIn;
-        [UIView animateWithDuration:duration delay:delay options:opts animations:^{
-            self.alpha = 1;
-            self.frame = (CGRect){self.frame.origin, sz.width * progress, SuProgressBarHeight};
-        } completion:nil];
+    [UIApplication sharedApplication].networkActivityIndicatorVisible = YES;
 
-        waitAtLeastUntil = [NSDate dateWithTimeIntervalSinceNow:delay + duration];
-        lastIncrementTime = [NSDate date];
-    }
+    CGSize sz = self.superview.bounds.size;
+    NSTimeInterval duration = 0.3;
+    int opts = UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationCurveEaseIn;
+    [UIView animateWithDuration:duration delay:0 options:opts animations:^{
+        self.alpha = 1;
+        self.frame = (CGRect){self.frame.origin, sz.width * progress, SuProgressBarHeight};
+    } completion:nil];
+
+    waitAtLeastUntil = [NSDate dateWithTimeIntervalSinceNow:duration];
 }
 
 - (float)progress {
@@ -301,6 +297,7 @@ enum SuProgressBarViewState {
     // less than one.
     NSMutableArray *singleUses;
 }
+@dynamic progress;
 
 + (id)kingWithDelegate:(id<KingOfDelegates>)delegate {
     TheKingOfOgres *king = [TheKingOfOgres new];
@@ -312,56 +309,32 @@ enum SuProgressBarViewState {
 
 - (void)addOgre:(SuProgress *)ogre singleUse:(BOOL)singleUse {
     ogre.delegate = self;
-    if (_progress == 0.f) {
-        self.progress = 0.05f; // do an initial trickle (yes, now)
-    }
     [_ogres addObject:ogre];
     if (singleUse)
         [singleUses addObject:ogre];
 }
 
-- (void)setProgress:(float)newprogress {
-    //TODO when you return make it so the progress portion of 0.8 is hardcoded
-    // and then we can always know that > 0.9 should have exponential fall off
-    // and then implement that!
-    // AND THEN fix it so it isn't doing that anymore
+- (BOOL)allFinished {
+    for (SuProgress *ogre in _ogres)
+        if (!ogre.finished)
+            return NO;
+    return YES;
+}
 
-    if (newprogress < _progress) {
-        NSLog(@"Won't set progress to %f as it's less than current value (%f)", newprogress, _progress);
-        return;
+- (void)ogred:(SuProgress *)ogre {
+    if (ogre.finished && self.allFinished) {
+        [_delegate finished];
+        [_ogres removeObjectsInArray:singleUses];
+        [_ogres makeObjectsPerformSelector:@selector(reset)];
+        [singleUses removeAllObjects];
+    } else {
+        float progress = 0;
+        for (SuProgress *ogre in _ogres)
+            progress += ogre.progress;
+        progress /= _ogres.count;
+        progress *= 0.95;  // only reach 100% when all ogres are finished
+        [_delegate progressed:progress];
     }
-    _progress = MIN(1.f, MAX(0.f, newprogress));
-    [_delegate progressed:_progress];
-}
-
-- (void)started:(SuProgress *)ogre {
-    if (_progress <= 0.05f) {
-        // a second initial trickle, for eg. NSURLConnection we
-        // do this at header response, and thus gives more
-        // progress feedback
-        self.progress = 0.1f;
-    }
-}
-
-- (void)ogre:(SuProgress *)ogre progressed:(float)progress {
-    // TODO should reported-progress for any ogre go > 1
-    // we should still drip, but in tiny amounts since we
-    // will then exceed 90%
-
-    self.progress += (progress / (float)_ogres.count) * 0.8;
-}
-
-- (void)finished:(SuProgress *)ogre {
-    for (id ogre in _ogres)
-        if (![ogre finished])
-            return;
-
-    self.progress = 1.f;
-
-    [_ogres removeObjectsInArray:singleUses];
-    [_ogres makeObjectsPerformSelector:@selector(reset)];
-    [singleUses removeAllObjects];
-    _progress = 0.f;  // don't use setter ∵ don't tell delegate
 }
 
 @end
@@ -370,28 +343,20 @@ enum SuProgressBarViewState {
 
 
 @implementation SuProgress
-
-// FIXME bit dumb to allow setting started to false considering
-// this is an invalid state in fact. Same for finished. Needs enum.
-- (void)setStarted:(BOOL)started {
-    _started = started;
-    if (started) {
-        [(NSObject *)_delegate performSelectorOnMainThread:@selector(started:) withObject:self waitUntilDone:NO];
-    }
-}
-
-- (void)setFinished:(BOOL)finished {
-    _finished = finished;
-    if (finished) {
-        _progress = 1;
-        [(NSObject *)_delegate performSelectorOnMainThread:@selector(finished:) withObject:self waitUntilDone:NO];
-    }
-}
+@dynamic progress;
+@synthesize finished;
 
 - (void)reset {
-    _started = NO;
-    _finished = NO;
-    _progress = 0.f;
+    properProgress = trickled = 0.f;
+    finished = NO;
+}
+
+- (void)trickle:(float)amount {
+    trickled += amount;
+}
+
+- (float)progress {
+    return (properProgress + trickled) / (1.0 + trickled);
 }
 
 - (BOOL)respondsToSelector:(SEL)aSelector {
@@ -429,22 +394,22 @@ enum SuProgressBarViewState {
     } else {
         //TODO error!
     }
-    self.started = YES;
+
+    trickled += 0.1;
+    [self.delegate ogred:self];
     
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didReceiveResponse:rsp];
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
-    float f = total_bytes
-            ? (float)data.length / (float)(total_bytes)
-            // we can't know how big the content is TODO but we
-            // could start adding a lot and get smaller as we
-            // guess the rate and amounts a little
-            : 0.01;
+    if (total_bytes)
+        properProgress += (float)data.length / (float)(total_bytes);
+    else
+        trickled += 0.05;
 
     void (^block)(void) = ^{
-        [self.delegate ogre:self progressed:f];
+        [self.delegate ogred:self];
     };
 
     if ([NSThread currentThread] != [NSThread mainThread])
@@ -452,20 +417,20 @@ enum SuProgressBarViewState {
     else
         block();
 
-    self.progress += f;
-
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didReceiveData:data];
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-    self.finished = YES;
+    finished = YES;
+    [self.delegate ogred:self];
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connection:connection didFailWithError:error];
 }
 
 - (void)connectionDidFinishLoading:(id)connection {
-    self.finished = YES;
+    finished = YES;
+    [self.delegate ogred:self];
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate connectionDidFinishLoading:connection];
 }
@@ -502,67 +467,111 @@ enum SuProgressBarViewState {
 
 
 
+// Welcome to an attempt at a progress bar for UIWebViews
+// In brief: it is surprisingly hard.
+// Partly because we get so little information from the
+// UIWebView, if only we knew more about what was being
+// loaded we could probably make more educated guesses
+// but as it stands we have to try and guess about rates
+// and increment progress in bursts and really, it's all
+// just lies. But it looks good and pyschologically
+// satisfies users.
+
+
 @implementation SuProgressUIWebView {
     NSUInteger loading;
-    NSUInteger cumulativeLoads;
+    NSUInteger complete;
+    NSUInteger bigloading;
+    NSUInteger bigcomplete;
+
+    BOOL started;
 }
 
-- (void)setFinished:(BOOL)finished {
-    [super setFinished:finished];
-    if (finished) {
-        loading = cumulativeLoads = 0;
+- (void)reset {
+    [super reset];
+    loading = complete = bigloading = bigcomplete = 0;
+    started = NO;
+}
+
+-(id)uiWebView:(id)view identifierForInitialRequest:(id)initialRequest fromDataSource:(id)dataSource {
+    return @(loading++);
+}
+
+- (void)uiWebView:(id)view resource:(id)resource didFailLoadingWithError:(id)error fromDataSource:(id)dataSource
+{
+    if (started) {
+        complete++;
+        trickled += 0.01;
+        [self.delegate ogred:self];
+        [self testdone:view];
     }
+}
+
+-(void)uiWebView:(id)view resource:(id)resource didFinishLoadingFromDataSource:(id)dataSource {
+    if (started) {
+        complete++;
+        trickled += 0.01;
+        [self.delegate ogred:self];
+
+        [self testdone:view];
+    }
+}
+
+- (BOOL)webView:(UIWebView *)webView shouldStartLoadWithRequest:(NSURLRequest *)request navigationType:(UIWebViewNavigationType)navigationType {
+    if (navigationType == UIWebViewNavigationTypeLinkClicked)
+        [self reset];
+
+    return [_endDelegate respondsToSelector:_cmd]
+        ? [_endDelegate webView:webView shouldStartLoadWithRequest:request navigationType:navigationType]
+        : YES;
 }
 
 - (void)webViewDidStartLoad:(UIWebView *)webView {
-    loading++;
-    cumulativeLoads++;
-    
-    NSLog(@"didStartLoad: %d/%d", loading, cumulativeLoads);
-    
-    if (!self.started) {
-        self.started = YES;
-    } else {
-        [self.delegate ogre:self progressed:0.05];
-        self.progress += 0.05;
+    if (!started) {
+        started = YES;
+        trickled += 0.1;
+        [self.delegate ogred:self];
     }
-    
+
+    bigloading++;
+
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate webViewDidStartLoad:webView];
 }
 
 - (void)webViewDidFinishLoad:(UIWebView *)webView {
-    loading--;
-    NSLog(@"didFinishLoad: %d/%d", loading, cumulativeLoads);
-    
-    float f = (1.f/cumulativeLoads) * (0.8f - self.progress);  // NOTE can still go over, doh
-    [self.delegate ogre:self progressed:f];
-    self.progress += f;
+    bigcomplete++;
+    if ([_endDelegate respondsToSelector:_cmd])
+        [_endDelegate webViewDidFinishLoad:webView];
 
-    if (loading == 0) {
+    [self testdone:webView];
+}
+
+- (void)testdone:(id)webView {
+    if (loading == complete && bigloading == bigcomplete) {
         [NSObject cancelPreviousPerformRequestsWithTarget:self];
         [self performSelector:@selector(ontimeout:) withObject:webView afterDelay:0.1];
     }
-
-    if ([_endDelegate respondsToSelector:_cmd])
-        [_endDelegate webViewDidFinishLoad:webView];
 }
 
 - (void)ontimeout:(UIWebView *)webView {
     NSString *readyState = [webView stringByEvaluatingJavaScriptFromString:@"document.readyState"];
-    if (loading == 0 && [readyState isEqualToString:@"complete"])
-        self.finished = YES;
-    else
-        [self performSelector:@selector(ontimeout:) withObject:webView afterDelay:0.1];
+    if (loading == complete && bigloading == bigcomplete) {
+        if ([readyState isEqualToString:@"complete"]) {
+            finished = YES;
+            [self.delegate ogred:self];
+        } else {
+            [self testdone:webView];
+        }
+    }
 }
 
 - (void)webView:(UIWebView *)webView didFailLoadWithError:(NSError *)error {
-    NSLog(@"FAILED: => %@", error);
-    [self webViewDidFinishLoad:webView];
+    bigcomplete++;
     if ([_endDelegate respondsToSelector:_cmd])
         [_endDelegate webView:webView didFailLoadWithError:error];
-}
 
-//TODO uiWebView:identifierForInitialRequest:fromDataSource:
+    [self testdone:webView];
+}
 
 @end
