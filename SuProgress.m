@@ -88,7 +88,7 @@ static TheKingOfOgres *SuProgressKing;
 
 @implementation UIViewController (SuProgress)
 
-- (void)SuProgressURLConnectionsCreatedInBlock:(void(^)(void))block {
+- (void)connectionCreationBlock:(void(^)(void))block {
     Class class = [NSURLConnection class];
     id methods = @[@"initWithRequest:delegate:startImmediately:", @"initWithRequest:delegate:"];
     
@@ -98,7 +98,7 @@ static TheKingOfOgres *SuProgressKing;
         method_exchangeImplementations(original, swizzle);
     }
 
-    SuProgressKing = [self SuProgressBar].king;
+    SuProgressKing = [self progressBar].king;
     block();
     SuProgressKing = nil;
 
@@ -132,7 +132,7 @@ static UIColor *SuProgressBarColor(UIView *bar) {
     return bar.tintColor;
 }
 
-- (SuProgressBarView *)SuProgressBar {
+- (SuProgressBarView *)progressBar {
     UIView *bar = nil;
     if (self.navigationController && self.navigationController.navigationBar) {
         UINavigationBar *navbar = self.navigationController.navigationBar;
@@ -151,10 +151,10 @@ static UIColor *SuProgressBarColor(UIView *bar) {
     return (id)bar;
 }
 
-- (void)SuProgressForWebView:(UIWebView *)webView {
+- (void)proxyProgressForWebView:(UIWebView *)webView {
     SuProgressUIWebView *ogre = [SuProgressUIWebView new];
-    ogre.delegate = [self SuProgressBar].king;
-    [[self SuProgressBar].king addOgre:ogre singleUse:NO];
+    ogre.delegate = [self progressBar].king;
+    [[self progressBar].king addOgre:ogre singleUse:NO];
     ogre.endDelegate = webView.delegate;
     webView.delegate = ogre;
 }
@@ -165,14 +165,14 @@ static UIColor *SuProgressBarColor(UIView *bar) {
 static void SuAFURLHTTPRequest_operationDidStart(id self, SEL _cmd)
 {
     UIViewController *vc = objc_getAssociatedObject(self, &SuAFHTTPRequestOperationViewControllerKey);
-    [vc SuProgressURLConnectionsCreatedInBlock:^{
+    [vc connectionCreationBlock:^{
         Class superclass = NSClassFromString(@"AFHTTPRequestOperation");
         void (*superIMP)(id, SEL) = (void *)[superclass instanceMethodForSelector:@selector(operationDidStart)];
         superIMP(self, _cmd);
     }];
 }
 
-- (void)SuProgressForAFHTTPRequestOperation:(id)operation {
+- (void)proxyProgressForAFHTTPRequestOperation:(id)operation {
     Class AFHTTPRequestOperation = NSClassFromString(@"AFHTTPRequestOperation");
     
     if (![operation isKindOfClass:AFHTTPRequestOperation]) {
