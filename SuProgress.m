@@ -172,7 +172,7 @@ static UIColor *SuProgressBarColor(UIView *bar) {
 - (void)SuProgressForWebView:(UIWebView *)webView inView:(UIView*)view {
     SuProgressUIWebView *ogre = [SuProgressUIWebView new];
     ogre.delegate = [self SuProgressBarInView:view].king;
-    [[self SuProgressBar].king addOgre:ogre singleUse:NO];
+    [[self SuProgressBarInView:view].king addOgre:ogre singleUse:NO];
     ogre.endDelegate = webView.delegate;
     webView.delegate = ogre;
 }
