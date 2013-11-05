@@ -137,25 +137,30 @@ static UIColor *SuProgressBarColor(UIView *bar) {
 }
 
 - (SuProgressBarView *)SuProgressBarInView:(UIView*)view {
+    
     UIView *bar = nil;
+    UIView *targetView = nil;
+    
     if (view) {
-        bar = view;
+        targetView = view;
     }
     else {
         if (self.navigationController && self.navigationController.navigationBar) {
             UINavigationBar *navbar = self.navigationController.navigationBar;
-            bar = [navbar viewWithTag:SuProgressBarTag];
-            if (!bar) {
-                bar = [SuProgressBarView new];
-                bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
-                bar.backgroundColor = SuProgressBarColor(navbar);
-                bar.tag = SuProgressBarTag;
-                bar.frame = (CGRect){0, navbar.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
-                [navbar addSubview:bar];
-            }
+            targetView = navbar;
         } else {
             NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
         }
+    }
+    
+    bar = [targetView viewWithTag:SuProgressBarTag];
+    if (!bar) {
+        bar = [SuProgressBarView new];
+        bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
+        bar.backgroundColor = SuProgressBarColor(targetView);
+        bar.tag = SuProgressBarTag;
+        bar.frame = (CGRect){0, targetView.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
+        [targetView addSubview:bar];
     }
     return (id)bar;
 }
