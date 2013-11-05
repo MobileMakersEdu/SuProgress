@@ -133,27 +133,40 @@ static UIColor *SuProgressBarColor(UIView *bar) {
 }
 
 - (SuProgressBarView *)SuProgressBar {
+    return [self SuProgressBarInView:nil];
+}
+
+- (SuProgressBarView *)SuProgressBarInView:(UIView*)view {
     UIView *bar = nil;
-    if (self.navigationController && self.navigationController.navigationBar) {
-        UINavigationBar *navbar = self.navigationController.navigationBar;
-        bar = [navbar viewWithTag:SuProgressBarTag];
-        if (!bar) {
-            bar = [SuProgressBarView new];
-            bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
-            bar.backgroundColor = SuProgressBarColor(navbar);
-            bar.tag = SuProgressBarTag;
-            bar.frame = (CGRect){0, navbar.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
-            [navbar addSubview:bar];
+    if (view) {
+        bar = view;
+    }
+    else {
+        if (self.navigationController && self.navigationController.navigationBar) {
+            UINavigationBar *navbar = self.navigationController.navigationBar;
+            bar = [navbar viewWithTag:SuProgressBarTag];
+            if (!bar) {
+                bar = [SuProgressBarView new];
+                bar.autoresizingMask = UIViewAutoresizingFlexibleTopMargin;
+                bar.backgroundColor = SuProgressBarColor(navbar);
+                bar.tag = SuProgressBarTag;
+                bar.frame = (CGRect){0, navbar.bounds.size.height - SuProgressBarHeight, 0, SuProgressBarHeight};
+                [navbar addSubview:bar];
+            }
+        } else {
+            NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
         }
-    } else {
-        NSLog(@"Sorry dude, I haven't written code that supports showing progress in this configuration yet! Fork and help?");
     }
     return (id)bar;
 }
 
 - (void)SuProgressForWebView:(UIWebView *)webView {
+    [self SuProgressForWebView:webView inView:nil];
+}
+
+- (void)SuProgressForWebView:(UIWebView *)webView inView:(UIView*)view {
     SuProgressUIWebView *ogre = [SuProgressUIWebView new];
-    ogre.delegate = [self SuProgressBar].king;
+    ogre.delegate = [self SuProgressBarInView:view].king;
     [[self SuProgressBar].king addOgre:ogre singleUse:NO];
     ogre.endDelegate = webView.delegate;
     webView.delegate = ogre;
