@@ -70,7 +70,7 @@
 @end
 
 @interface SuProgressUIWebView : SuProgress <UIWebViewDelegate>
-@property (nonatomic) id<UIWebViewDelegate> endDelegate;
+@property (nonatomic, weak) id<UIWebViewDelegate> endDelegate;
 @end
 
 static const char *SuAFHTTPRequestOperationViewControllerKey;
