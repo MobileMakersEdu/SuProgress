@@ -24,6 +24,7 @@
   * but please be sure to handle the whole state matrix.
   */
 - (void)SuProgressForWebView:(UIWebView *)webView;
+- (void)SuProgressForWebView:(UIWebView *)webView inView:(UIView*)view;
 
 - (UIView *)SuProgressBar;
 
