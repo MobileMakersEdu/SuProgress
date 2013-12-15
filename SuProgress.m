@@ -73,6 +73,10 @@
 @property (nonatomic, weak) id<UIWebViewDelegate> endDelegate;
 @end
 
+@interface SuProgressNSProgress : SuProgress
+@property (nonatomic, strong) NSProgress *currentProgress;
+@end
+
 static const char *SuAFHTTPRequestOperationViewControllerKey;
 
 
@@ -193,6 +197,13 @@ static void SuAFURLHTTPRequest_operationDidStart(id self, SEL _cmd)
 }
 
 #pragma clang diagnostic pop
+
+- (void)SuProgressForProgress:(NSProgress *)progress
+{
+    SuProgressNSProgress *phandler = [SuProgressNSProgress new];
+    phandler.currentProgress = progress;
+    [[self SuProgressBar].king addOgre:phandler singleUse:NO];
+}
 
 @end
 
@@ -575,3 +586,56 @@ enum SuProgressBarViewState {
 }
 
 @end
+
+
+@implementation SuProgressNSProgress
+
+static NSString * const kFractionCompletedKey = @"fractionCompleted";
+
+- (void)dealloc
+{
+    [_currentProgress removeObserver:self forKeyPath:kFractionCompletedKey];
+}
+
+- (void)setCurrentProgress:(NSProgress *)currentProgress
+{
+    _currentProgress = currentProgress;
+    if(currentProgress)
+    {
+        [_currentProgress addObserver:self forKeyPath:kFractionCompletedKey options:NSKeyValueObservingOptionNew context:nil];
+    }
+    
+    __typeof__(self) __weak weakSelf = self;
+    _currentProgress.pausingHandler = ^
+    {
+        //nothing for the moment
+    };
+    _currentProgress.cancellationHandler = ^
+    {
+        [weakSelf reset];
+    };
+    
+    trickled += 0.1;
+    [self.delegate ogred:self];     //<! mean update ui
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
+{
+    if([keyPath isEqualToString:kFractionCompletedKey])
+    {
+        properProgress = self.currentProgress.fractionCompleted;
+        finished = (self.currentProgress.completedUnitCount == self.currentProgress.totalUnitCount);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            
+            [self.delegate ogred:self];     //<! mean update ui
+        });
+    }
+    else
+    {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    }
+}
+
+@end
+

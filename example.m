@@ -7,12 +7,14 @@
 @interface AppDelegate : UIResponder <UIApplicationDelegate, NSURLConnectionDelegate, UIWebViewDelegate> {
     UIViewController *connectionsViewController;
     UIViewController *webViewController;
+    UIViewController *progressViewController;
     NSMutableDictionary *datas;
   #ifdef _AFNETWORKING_
     UIViewController *afnetworkingController;
   #endif
     UITextView *textView;
     UIWebView *webView;
+    NSProgress *progress;
 }
 @property (strong, nonatomic) UIWindow *window;
 @end
@@ -69,6 +71,29 @@
     id url = [NSURL URLWithString:@"http://theverge.com"];
     id rq = [NSURLRequest requestWithURL:url];
     [webView loadRequest:rq];
+}
+
+- (void)demoProgress
+{
+    progress = [NSProgress currentProgress];
+    if(!progress) progress = [NSProgress progressWithTotalUnitCount:123];
+    progress.completedUnitCount = 0;
+    [progressViewController SuProgressForProgress:progress];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        while(progress.completedUnitCount < progress.totalUnitCount)
+        {
+            int workTime = arc4random() % 30;
+            
+            sleep(1);
+            int64_t completed = progress.completedUnitCount + workTime;
+            if(completed > progress.totalUnitCount)
+                completed = progress.totalUnitCount;
+            
+            progress.completedUnitCount = completed;
+        }
+    });
 }
 
 #ifdef _AFNETWORKING_
@@ -169,13 +194,30 @@
     [navigationController3 pushViewController:afnetworkingController animated:NO];
   #endif
 
+    progressViewController = [UIViewController new];
+    progressViewController.title = @"NSProgress Example";
+    progressViewController.tabBarItem = [[UITabBarItem alloc] initWithTitle:@"NSProgress" image:square selectedImage:square];
+    
+    button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [button setTitle:@"Go" forState:UIControlStateNormal];
+    [button sizeToFit];
+    button.frame = CGRectInset(button.frame, -10, -5);
+    button.titleLabel.font = [UIFont boldSystemFontOfSize:20];
+    button.center = (CGPoint){160, 104};
+    [progressViewController.view addSubview:button];
+    [button addTarget:self action:@selector(demoProgress) forControlEvents:UIControlEventTouchUpInside];
+    
+    UINavigationController *navigationController4 = [UINavigationController new];
+    [navigationController4 pushViewController:progressViewController animated:NO];
+    
     UITabBarController *tabs = [UITabBarController new];
     tabs.viewControllers = @[
         navigationController1,
         navigationController2,
       #ifdef _AFNETWORKING_
-        navigationController3
+        navigationController3,
       #endif
+        navigationController4
     ];
     
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
