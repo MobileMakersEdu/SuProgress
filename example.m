@@ -1,5 +1,6 @@
 @import UIKit;
-#import "SuProgress.h"
+
+#import "UIViewController+SuProgress.h"
 
 // uncomment to generate the AFNetworking example as well
 //#import "AFNetworking.h"
@@ -34,7 +35,8 @@
         @"http://digg.com",
         @"https://abs.twimg.com/a/1382379960/images/resources/twitter-bird-white-on-blue.png"
     ];
-    [connectionsViewController SuProgressURLConnectionsCreatedInBlock:^{
+    
+    [connectionsViewController connectionCreationBlock:^{
         datas = [NSMutableDictionary new];
         for (id urlstr in urls) {
             id url = [NSURL URLWithString:urlstr];
@@ -63,7 +65,7 @@
     //NOTE! don't set the delegate to anything else, it breaks SuProgress
     if (webView.delegate == nil) {
         webView.delegate = self;  // you must call the SuProgress method AFTER setting the webView's delegate
-        [webViewController SuProgressForWebView:webView];
+        [webViewController proxyProgressForWebView:webView];
     }
 
     id url = [NSURL URLWithString:@"http://theverge.com"];
