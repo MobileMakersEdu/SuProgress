@@ -32,4 +32,6 @@
   */
 - (void)SuProgressForAFHTTPRequestOperation:(AFHTTPRequestOperation *)operation;
 
+- (void)SuProgressForProgress:(NSProgress *)progress;
+
 @end
